@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     container: ghcr.io/nextcloud/continuous-integration-client-qt6:client-6.8.1-2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
       - name: Configure and compile
