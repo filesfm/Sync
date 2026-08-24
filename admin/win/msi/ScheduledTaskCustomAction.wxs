@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?include $(sys.CURRENTDIR)OEM.wxi?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Create Nextcloud Run as Admin Scheduled Task -->
+    <!-- <CustomAction Id="CreateScheduledTaskId"
+                  Property="CreateScheduledTask"
+                  Return="check"
+                  Execute="immediate"
+                  Impersonate="yes"
+                  Value="&quot;[SystemFolder]cmd.exe&quot; /C &quot;[SystemFolder]SCHTASKS.EXE /CREATE /SC ONLOGON /TN &quot;Files.fm Sync 2025 – Run as Admin&quot; /TR &quot;&apos;[INSTALLDIR]$(var.AppExe)&apos;&quot; /RL HIGHEST /F /IT /RU %USERNAME%&quot;" />
+
+    <CustomAction Id="CreateScheduledTask"
+        Return="check"
+        Impersonate="no"
+        Execute="deferred"
+        BinaryKey="WixCA"
+        DllEntry="CAQuietExec" /> -->
+  </Fragment>
+</Wix> 

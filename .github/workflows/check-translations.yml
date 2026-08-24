@@ -1,0 +1,18 @@
+name: Check translations
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+# Declare default permissions as read only.
+permissions: read-all
+
+jobs:
+  checkTranslations:
+    runs-on: ubuntu-latest
+    
+    steps:
+      -   uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v3
+      -   name: Check German
+          run: |
+            [[ $(grep "Benötigt keine Übersetzung" translations/client_de.ts -c) -gt 0 ]] && exit 1 || exit 0

@@ -1,0 +1,77 @@
+name: files-fm-sync
+# Keep in sync with MIRALL_VERSION in VERSION.cmake.
+version: '3.16.6'
+summary: Keep your files synchronized with Files.fm
+description: |
+  Files.fm Sync 2025 is a desktop client that keeps local folders
+  continuously synchronized with your Files.fm account. It is based on the
+  Nextcloud desktop synchronization client.
+license: GPL-2.0-or-later
+grade: stable
+confinement: strict
+base: core24
+compression: lzo
+
+apps:
+  files-fm-sync:
+    command: usr/bin/files_fm_sync
+    common-id: com.files.fm.sync.nextcloud
+    desktop: usr/share/applications/com.files.fm.sync.nextcloud.desktop
+    extensions: [kde-neon-6]
+    plugs:
+      - home
+      - removable-media
+      - network
+      - network-bind
+      - password-manager-service
+
+# The kde-neon-6 extension supplies Qt6 (incl. WebEngine) and KDE
+# Frameworks 6 (incl. KArchive/KGuiAddons) as content snaps, so only the
+# libraries the client links against that the content snaps don't provide
+# need to be built here: QtKeychain and libp11 (opensc-libp11, used for
+# hardware-token / smartcard client certificates).
+parts:
+  libp11:
+    plugin: autotools
+    source: https://github.com/OpenSC/libp11/releases/download/libp11-0.4.20/libp11-0.4.20.tar.gz
+    source-checksum: sha256/a125e0310ff10c189fc1b32a9652101486ea94a6b07c677a30e90e3638d2db48
+    autotools-configure-parameters:
+      - --prefix=/usr
+      - --disable-static
+    build-packages:
+      - libssl-dev
+      - pkg-config
+
+  qtkeychain:
+    after: [libp11]
+    plugin: cmake
+    source: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.17.0.tar.gz
+    source-checksum: sha256/3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504
+    cmake-generator: Ninja
+    cmake-parameters:
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_WITH_QT5=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+      - -DBUILD_TRANSLATIONS=OFF
+
+  files-fm-sync:
+    after: [qtkeychain]
+    plugin: cmake
+    source: .
+    cmake-generator: Ninja
+    cmake-parameters:
+      - -DCMAKE_INSTALL_PREFIX=/usr
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DBUILD_SHELL_INTEGRATION=OFF
+      - -DBUILD_UPDATER=OFF
+    build-packages:
+      - libssl-dev
+      - libsqlite3-dev
+      - zlib1g-dev
+      - pkg-config
+    # OpenSSL/SQLite/zlib runtime libraries are expected to already be
+    # staged by the kf6-core24/qt6-core24 content snaps. Run `snapcraft
+    # lint` (or a full build) after any base/runtime bump and add explicit
+    # stage-packages here if it reports missing libraries.

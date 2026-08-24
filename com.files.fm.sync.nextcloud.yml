@@ -1,0 +1,71 @@
+id: com.files.fm.sync.nextcloud
+runtime: org.kde.Platform
+runtime-version: '6.9'
+sdk: org.kde.Sdk
+command: files_fm_sync
+rename-icon: files_fm_sync
+
+# The KDE 6.9 runtime already ships Qt6 (incl. WebEngine), KDE Frameworks 6
+# (incl. KArchive/KGuiAddons) and the usual build tooling, so only the two
+# libraries the client links against that are *not* part of that runtime
+# need to be built from source below: QtKeychain and libp11 (opensc-libp11,
+# used for hardware-token / smartcard client certificates).
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --socket=pulseaudio
+  - --device=dri
+  # A sync client needs to be able to read/write folders anywhere the user
+  # picks them, not just $HOME, and needs to be able to reveal files in the
+  # host file manager.
+  - --filesystem=host
+  - --filesystem=xdg-run/gvfs
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.freedesktop.FileManager1
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/man
+  - '*.la'
+  - '*.a'
+
+modules:
+  - name: libp11
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/OpenSC/libp11/releases/download/libp11-0.4.20/libp11-0.4.20.tar.gz
+        sha256: a125e0310ff10c189fc1b32a9652101486ea94a6b07c677a30e90e3638d2db48
+
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DBUILD_WITH_QT5=OFF
+      - -DBUILD_TEST_APPLICATION=OFF
+      - -DBUILD_TRANSLATIONS=OFF
+    sources:
+      - type: archive
+        url: https://github.com/frankosterfeld/qtkeychain/archive/refs/tags/0.17.0.tar.gz
+        sha256: 3b85c3929034b0a99da777130c34d99f006fcd3a9d56564159399a33fee0e504
+
+  - name: files-fm-sync
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DBUILD_SHELL_INTEGRATION=OFF
+      - -DBUILD_UPDATER=OFF
+      - -DMIRALL_VERSION_SUFFIX=
+    sources:
+      - type: dir
+        path: .
+    post-install:
+      - install -Dm644 com.files.fm.sync.nextcloud.metainfo.xml
+        /app/share/metainfo/com.files.fm.sync.nextcloud.metainfo.xml
