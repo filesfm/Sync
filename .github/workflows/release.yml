@@ -88,6 +88,7 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -G Ninja \
+            --debug-find-pkg=Qt6WebEngineCore,Qt6WebEngineWidgets \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_TESTING=OFF \
