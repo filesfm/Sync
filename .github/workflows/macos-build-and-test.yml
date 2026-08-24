@@ -19,7 +19,7 @@ jobs:
       CRAFT_MASTER_CONFIG: ${{ github.workspace }}/craftmaster.ini
       CRAFT_BLUEPRINT_OPTIONS: ${{ matrix.craft_options }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
