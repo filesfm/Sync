@@ -124,7 +124,8 @@ jobs:
           QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/gui" \
           LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib:$QT_ROOT_DIR/plugins/sqldrivers" \
             "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" --appdir="$APPDIR" \
-            --exclude-library="libqsqlmimer.so"
+            --exclude-library="libqsqlmimer.so" \
+            --exclude-library="libqtposition_nmea.so"
 
       - name: Assemble AppDir
         env:
