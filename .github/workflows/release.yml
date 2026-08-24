@@ -196,13 +196,41 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # Equivalent to flatpak/flatpak-github-actions/flatpak-builder, run
+      # by hand so the network-dependent step (fetching org.kde.Platform
+      # from dl.flathub.org) can be retried -- that CDN has documented,
+      # recurring timeout issues unrelated to this manifest. See:
+      # https://github.com/flathub/flathub/issues/4993
       - name: Build Flatpak bundle
-        uses: flatpak/flatpak-github-actions/flatpak-builder@401fe28a8384095fc1531b9d320b292f0ee45adb # v6.7
-        with:
-          bundle: files_fm_sync.flatpak
-          manifest-path: com.files.fm.sync.nextcloud.yml
-          cache-key: flatpak-builder-${{ github.sha }}
-          upload-artifact: false
+        run: |
+          for attempt in 1 2 3; do
+            echo "flatpak-builder attempt $attempt/3"
+            if /app/bin/xvfb-run --auto-servernum flatpak-builder \
+              --repo=repo \
+              --disable-rofiles-fuse \
+              --install-deps-from=flathub \
+              --subject="Built from ${GITHUB_SHA}" \
+              --force-clean \
+              --default-branch=master \
+              --arch=x86_64 \
+              --ccache \
+              --state-dir=.flatpak-builder \
+              flatpak_app \
+              com.files.fm.sync.nextcloud.yml; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "flatpak-builder failed after 3 attempts" >&2
+              exit 1
+            fi
+            echo "flatpak-builder failed, retrying in 30s..."
+            sleep 30
+          done
+
+          flatpak build-bundle repo files_fm_sync.flatpak \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            --arch=x86_64 \
+            com.files.fm.sync.nextcloud master
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
