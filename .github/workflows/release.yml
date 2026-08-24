@@ -29,7 +29,8 @@ jobs:
             build-essential patchelf fuse libfuse2 \
             libssl-dev libsqlite3-dev libp11-dev \
             libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
-            libglib2.0-dev libdbus-1-dev libcloudproviders-dev
+            libglib2.0-dev libdbus-1-dev libcloudproviders-dev \
+            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev
 
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
@@ -38,6 +39,29 @@ jobs:
           arch: linux_gcc_64
           modules: 'qt5compat qtwebsockets qtshadertools'
           cache: true
+
+      # Ubuntu 22.04 predates KDE Frameworks 6, so KF6Archive
+      # (required by src/libsync/CMakeLists.txt) and its build-time
+      # dependency extra-cmake-modules aren't packaged for jammy.
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/ecm-build"
+          sudo cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Build and install KF6Archive
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/karchive-build"
+          sudo cmake --install "$RUNNER_TEMP/karchive-build"
 
       # Ubuntu 22.04 doesn't ship a Qt6 build of qtkeychain, which
       # src/CMakeLists.txt requires unless TOKEN_AUTH_ONLY is set.
