@@ -54,6 +54,11 @@ parts:
       - -DBUILD_WITH_QT5=OFF
       - -DBUILD_TEST_APPLICATION=OFF
       - -DBUILD_TRANSLATIONS=OFF
+    build-packages:
+      - libsecret-1-dev
+      - pkg-config
+    stage-packages:
+      - libsecret-1-0
 
   files-fm-sync:
     after: [qtkeychain]
