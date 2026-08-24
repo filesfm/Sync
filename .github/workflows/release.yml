@@ -113,6 +113,13 @@ jobs:
           DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
           ICON_FILE="$STAGING/usr/local/share/icons/hicolor/512x512/apps/files_fm_sync.png"
 
+          # appimagetool's strict desktop-file validation rejects custom
+          # groups not prefixed "X-" (freedesktop desktop-entry spec).
+          # Same workaround as admin/linux/build-appimage.sh.
+          sed -i -e 's/\[org.freedesktop.CloudProviders\]/[X-org.freedesktop.CloudProviders]/' \
+                 -e 's/Implements=org.freedesktop.CloudProviders/Implements=X-org.freedesktop.CloudProviders/' \
+                 "$DESKTOP_FILE"
+
           LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib" \
             "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
             --appdir="$APPDIR" \
