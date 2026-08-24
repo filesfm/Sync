@@ -76,6 +76,13 @@ jobs:
           cmake --build "$RUNNER_TEMP/qtkeychain-build"
           sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
 
+      # Refresh the dynamic linker cache so libKF6Archive.so.6 and
+      # libqt6keychain.so (installed to /usr/local/lib above) are
+      # resolvable when linuxdeploy scans the built executable's
+      # shared-library dependencies later in this job.
+      - name: Refresh dynamic linker cache
+        run: sudo ldconfig
+
       - name: Configure, compile and install
         env:
           VERSION: ${{ github.ref_name }}
