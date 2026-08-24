@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    name: AppImage
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@8b297075da4cd2a5f1fd21fe011b499edf06e9d2 # v4
+
+      - name: Install Linux build/runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential patchelf fuse libfuse2 \
+            libssl-dev libsqlite3-dev \
+            libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
+            libglib2.0-dev libinotifytools0-dev
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: '6.8.3'
+          arch: linux_gcc_64
+          modules: 'qt5compat qtwebsockets qtshadertools'
+          cache: true
+
+      # Ubuntu 22.04 doesn't ship a Qt6 build of qtkeychain, which
+      # src/CMakeLists.txt requires unless TOKEN_AUTH_ONLY is set.
+      - name: Build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/qtkeychain-build"
+          sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      - name: Configure, compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_UPDATER=ON \
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
+            -DMIRALL_VERSION_SUFFIX=""
+          cmake --build "$GITHUB_WORKSPACE/build" --parallel "$(nproc)"
+          DESTDIR="$RUNNER_TEMP/appimage-root" cmake --install "$GITHUB_WORKSPACE/build"
+
+      - name: Deploy Qt and system dependencies with linuxdeploy
+        env:
+          STAGING: ${{ runner.temp }}/appimage-root
+          APPDIR: ${{ runner.temp }}/AppDir
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          mkdir -p "$HOME/.local/linuxdeploy-tools"
+          curl -sL -o "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
+          curl -sL -o "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage"
+
+          DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
+          ICON_FILE="$STAGING/usr/local/share/icons/hicolor/512x512/apps/files_fm_sync.png"
+
+          "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
+            --appdir="$APPDIR" \
+            --executable="$STAGING/usr/local/bin/files_fm_sync" \
+            --desktop-file="$DESKTOP_FILE" \
+            --icon-file="$ICON_FILE"
+
+          QMAKE="$QT_ROOT_DIR/bin/qmake" \
+          QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/gui" \
+            "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" --appdir="$APPDIR"
+
+      - name: Assemble AppDir
+        env:
+          STAGING: ${{ runner.temp }}/appimage-root
+          APPDIR: ${{ runner.temp }}/AppDir
+          VERSION: ${{ github.ref_name }}
+        run: |
+          chmod +x "$GITHUB_WORKSPACE/admin/linux/appimage-launcher"
+          cp "$GITHUB_WORKSPACE/admin/linux/appimage-launcher" "$APPDIR/usr/bin/launcher"
+          cp "$STAGING/usr/local/bin/files_fm_synccmd" "$APPDIR/usr/bin/files_fm_synccmd"
+          cp "$STAGING/usr/local/bin/files_fm_sync" "$APPDIR/usr/bin/files_fm_sync"
+          patchelf --set-rpath '$ORIGIN/../lib' "$APPDIR/usr/bin/files_fm_sync"
+          patchelf --set-rpath '$ORIGIN/../lib' "$APPDIR/usr/bin/files_fm_synccmd"
+
+          ln -f -s usr/bin/launcher "$APPDIR/AppRun"
+          cp "$STAGING/usr/local/share/icons/hicolor/256x256/apps/files_fm_sync.png" "$APPDIR/.DirIcon"
+
+          mkdir -p "$APPDIR/usr/plugins"
+          cp "$(find "$STAGING" -name 'files_fm_syncsync_vfs_suffix.so')" "$APPDIR/usr/plugins/files_fm_syncsync_vfs_suffix.so"
+          cp "$(find "$STAGING" -name 'files_fm_syncsync_vfs_xattr.so')" "$APPDIR/usr/plugins/files_fm_syncsync_vfs_xattr.so"
+
+          mkdir -p "$APPDIR/usr/share/caja-python"
+          mkdir -p "$APPDIR/usr/share/nemo-python"
+          mkdir -p "$APPDIR/usr/share/nautilus-python"
+          cp "$STAGING/usr/local/share/caja-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/caja-python"
+          cp "$STAGING/usr/local/share/nemo-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/nemo-python"
+          cp "$STAGING/usr/local/share/nautilus-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/nautilus-python"
+
+          echo "${VERSION#v}" > "$APPDIR/usr/version"
+
+          DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
+          cp --force "$DESKTOP_FILE" "$APPDIR/$(basename "$DESKTOP_FILE")"
+
+      - name: Package AppImage with appimagetool
+        env:
+          APPDIR: ${{ runner.temp }}/AppDir
+          VERSION: ${{ github.ref_name }}
+        run: |
+          curl -sL -o "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage" \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage"
+
+          mkdir -p dist
+          APPIMAGE_EXTRACT_AND_RUN=1 "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage" -n "$APPDIR" \
+            "dist/files_fm_sync-${VERSION#v}.AppImage"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: appimage
+          path: dist/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [appimage]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

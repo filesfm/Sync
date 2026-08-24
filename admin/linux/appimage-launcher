@@ -1,0 +1,133 @@
+#!/bin/bash
+readonly BIN_DIR="$(dirname "$(realpath "${BASH_SOURCE[0]}")")"
+readonly USR_DIR="$(dirname "${BIN_DIR}")"
+readonly TOP_DIR="$(dirname "${USR_DIR}")"
+readonly APPIMAGE_FILE="$(basename "${APPIMAGE}")"
+
+mkdir -p ~/.local/share/bash-completion/completions
+if [[ ! -e "${HOME}/.local/share/bash-completion/completions/${APPIMAGE_FILE}" ]]; then
+	echo 'filesfmsync_completion() {
+	local cur opts
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	opts="--silent -s --httpproxy --trust --exclude --unsyncedfolders --user -u --password -p -n --non-interactive --max-sync-retries --uplimit --downlimit -h --version -v --logdebug --path"
+	COMPREPLY=($(compgen -W "$opts" -- "$cur"))
+}' >"${HOME}/.local/share/bash-completion/completions/${APPIMAGE_FILE}"
+	echo "complete -F filesfmsync_completion ${APPIMAGE_FILE}
+complete -F filesfmsync_completion ./${APPIMAGE_FILE}" >>"${HOME}/.local/share/bash-completion/completions/${APPIMAGE_FILE}"
+fi
+
+if [[ ${#@} -ne 0 ]]; then
+	if [[ ${#@} -eq 1 && $1 == "--background" ]]; then
+		:
+	elif [[ ${#@} -ge 3 && $1 == "--update" ]]; then
+		kill "${@:2:$#-2}" # pids
+		rm "$3"   # AppImage absolute pathname
+	else
+		"${BIN_DIR}/files_fm_synccmd" $*
+		exit
+	fi
+fi
+
+readonly APPIMAGE_VERSION=$(cat "${USR_DIR}/version")
+readonly NEW_APPIMAGE_VERSION=$(curl "https://webdavdev7.failiem.lv/sync-appimage/version" 2>/dev/null)
+if [[ "${APPIMAGE_VERSION}" == "${NEW_APPIMAGE_VERSION}" ]]; then
+	:
+elif [[ "$(printf "%s\n%s\n" "${APPIMAGE_VERSION}" "${NEW_APPIMAGE_VERSION}" | sort -V | tail -1)" == ${NEW_APPIMAGE_VERSION} ]]; then
+	if zenity --question "Sync Update" --text "A new version is available: ${APPIMAGE_VERSION} -> ${NEW_APPIMAGE_VERSION} Do you want to update the application?"; then
+		NEW_APPIMAGE="$(dirname "${APPIMAGE}")/files_fm_sync-${NEW_APPIMAGE_VERSION}.AppImage"
+		wget "https://webdavdev7.failiem.lv/sync-appimage/download" -O "${NEW_APPIMAGE}"
+		chmod u+x "${NEW_APPIMAGE}"
+		"${NEW_APPIMAGE}" --update "$(pgrep files_fm_sync | tr '\n' ' ')" "${APPIMAGE}"
+		echo "${NEW_APPIMAGE} --update $(pgrep files_fm_sync | tr '\n' ' ') ${APPIMAGE}"
+	fi
+fi
+
+cleanup() {
+	rm ~/.local/share/applications/filesfm.desktop
+	rm ~/.local/share/mime/packages/x-filesfm.xml
+	rm ~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2025.service
+	case "${FILE_MANAGER,,}" in
+		*nautilus*)
+			if rm ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+				nautilus -q
+			fi ;;
+		*nemo*)
+			if rm ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+				nemo --quit
+			fi ;;
+		*caja*)
+			if rm ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+				caja -q
+			fi ;;
+	esac
+	for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2025/files_fm_sync.cfg); do
+		DIRECTORY=$(echo "$config_entry" | cut -d '=' -f 2)
+		gio set -t unset "$DIRECTORY" metadata::custom-icon
+	done
+	gio set -t unset "$APPIMAGE" metadata::custom-icon
+}
+trap cleanup EXIT
+
+mkdir -p ~/.local/share/applications
+echo "[Desktop Entry]
+Name=Files.fm
+Exec=${BIN_DIR}/files_fm_sync %f
+Type=Application
+Terminal=false
+Icon=${BIN_DIR}/files_fm_sync.png
+MimeType=application/x-filesfm;
+Implements=org.freedesktop.CloudProviders
+[org.freedesktop.CloudProviders]
+BusName=com.filesfmsia.FilesfmSync2025
+ObjectPath=/com/filesfmsia/FilesfmSync2025" >~/.local/share/applications/filesfm.desktop
+
+mkdir -p ~/.local/share/mime/packages
+echo '<?xml version="1.0" encoding="UTF-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-filesfm">
+    <comment>Files.fm file</comment>
+    <glob pattern="*.filesfm"/>
+  </mime-type>
+</mime-info>' >~/.local/share/mime/packages/x-filesfm.xml
+update-mime-database ~/.local/share/mime
+xdg-mime default filesfm.desktop application/x-filesfm
+
+mkdir -p ~/.local/share/dbus-1/services
+echo "[D-BUS Service]
+Name=com.filesfmsia.FilesfmSync2025
+Exec=${BIN_DIR}/files_fm_sync --background" >~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2025.service
+
+TMP=$(mktemp)
+FILE_MANAGER=$(xdg-mime query default inode/directory)
+case "${FILE_MANAGER,,}" in
+	*nautilus*)
+		cp "${USR_DIR}/share/nautilus-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		mkdir -p ~/.local/share/nautilus-python/extensions
+		cp "$TMP" ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py
+		chmod 644 ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py
+		if pgrep nautilus >/dev/null 2>&1; then
+			nautilus -q
+		fi ;;
+	*nemo*)
+		cp "${USR_DIR}/share/nemo-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		mkdir -p ~/.local/share/nemo-python/extensions
+		cp "$TMP" ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
+		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
+		nemo --quit ;;
+	*caja*)
+		cp "${USR_DIR}/share/caja-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		mkdir -p ~/.local/share/caja-python/extensions
+		cp "$TMP" ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2025.py
+		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
+		caja -q ;;
+esac
+
+ICON_DIR=$(realpath "${BIN_DIR}/../..")
+gio set "$APPIMAGE" metadata::custom-icon "file://${ICON_DIR}/files_fm_sync.png"
+for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2025/files_fm_sync.cfg); do
+	DIRECTORY=$(echo "$config_entry" | cut -d '=' -f 2)
+	gio set "$DIRECTORY" metadata::custom-icon "file://${ICON_DIR}/files_fm_sync.png"
+done
+
+systemctl --user set-environment XDG_DATA_DIRS="$HOME/.local/share:$XDG_DATA_DIRS"
+"${BIN_DIR}/files_fm_sync"
