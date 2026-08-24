@@ -35,7 +35,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
         with:
-          version: '6.8.3'
+          version: '6.9.0'
           arch: linux_gcc_64
           modules: 'qt5compat qtwebsockets qtshadertools'
           cache: true
