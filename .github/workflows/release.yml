@@ -38,7 +38,7 @@ jobs:
         with:
           version: '6.9.0'
           arch: linux_gcc_64
-          modules: 'qt5compat qtwebsockets qtshadertools'
+          modules: 'qt5compat qtwebsockets qtshadertools qtwebengine'
           cache: true
 
       # Ubuntu 22.04 predates KDE Frameworks 6, so KF6Archive
