@@ -46,6 +46,11 @@ cleanup:
   - /lib/cmake
   - /lib/pkgconfig
   - /share/man
+  # Flatpak's export step rejects any hicolor apps/ icon over 512x512;
+  # the project's own icon set includes a 1024x1024 variant, so strip it
+  # here rather than the 512x512-and-under sizes actually usable by
+  # desktop environments.
+  - /share/icons/hicolor/1024x1024
   - '*.la'
   - '*.a'
 
