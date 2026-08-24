@@ -27,9 +27,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential patchelf fuse libfuse2 \
-            libssl-dev libsqlite3-dev \
+            libssl-dev libsqlite3-dev libp11-dev \
             libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
-            libglib2.0-dev libinotifytools0-dev
+            libglib2.0-dev libdbus-1-dev libcloudproviders-dev
 
       - name: Install Qt
         uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
