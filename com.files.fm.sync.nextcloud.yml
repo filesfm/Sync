@@ -1,15 +1,24 @@
 id: com.files.fm.sync.nextcloud
 runtime: org.kde.Platform
-runtime-version: '6.9'
+runtime-version: '6.10'
 sdk: org.kde.Sdk
+# org.kde.Platform never bundles Qt WebEngine (which src/CMakeLists.txt
+# requires unless BUILD_WITH_WEBENGINE=OFF) -- it has to be layered in via
+# Flathub's io.qt.qtwebengine.BaseApp. Its supported version pairings are
+# 6.8, 6.10, 6.11 (or 5.15-25.08); there is no 6.9, hence runtime-version
+# above being 6.10 rather than matching CMakeLists.txt's REQUIRED_QT_VERSION
+# floor of 6.8.0 exactly.
+base: io.qt.qtwebengine.BaseApp
+base-version: '6.10'
 command: files_fm_sync
 rename-icon: files_fm_sync
 
-# The KDE 6.9 runtime already ships Qt6 (incl. WebEngine), KDE Frameworks 6
-# (incl. KArchive/KGuiAddons) and the usual build tooling, so only the two
-# libraries the client links against that are *not* part of that runtime
-# need to be built from source below: QtKeychain and libp11 (opensc-libp11,
-# used for hardware-token / smartcard client certificates).
+# The KDE 6.10 runtime (+ qtwebengine BaseApp) already ships Qt6 (incl.
+# WebEngine), KDE Frameworks 6 (incl. KArchive/KGuiAddons) and the usual
+# build tooling, so only the two libraries the client links against that
+# are *not* part of that runtime need to be built from source below:
+# QtKeychain and libp11 (opensc-libp11, used for hardware-token /
+# smartcard client certificates).
 finish-args:
   - --share=ipc
   - --share=network
@@ -17,6 +26,9 @@ finish-args:
   - --socket=wayland
   - --socket=pulseaudio
   - --device=dri
+  # Required by the qtwebengine BaseApp so the sandboxed renderer process
+  # can find its own executable.
+  - --env=QTWEBENGINEPROCESS_PATH=/app/bin/QtWebEngineProcess
   # A sync client needs to be able to read/write folders anywhere the user
   # picks them, not just $HOME, and needs to be able to reveal files in the
   # host file manager.
@@ -25,6 +37,9 @@ finish-args:
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.freedesktop.FileManager1
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
 
 cleanup:
   - /include
