@@ -39,6 +39,13 @@ modules:
     buildsystem: autotools
     config-opts:
       - --disable-static
+      # libp11 detects the OpenSSL engines/providers directories from the
+      # *system* OpenSSL's compiled-in paths (/usr/lib/.../engines-3,
+      # ossl-modules), not from --prefix. In the Flatpak sandbox /usr is
+      # read-only during the build -- only /app is writable -- so those
+      # need to be redirected into /app explicitly.
+      - --with-enginesdir=/app/lib/engines-3
+      - --with-modulesdir=/app/lib/ossl-modules
     sources:
       - type: archive
         url: https://github.com/OpenSC/libp11/releases/download/libp11-0.4.20/libp11-0.4.20.tar.gz
