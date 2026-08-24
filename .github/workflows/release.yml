@@ -88,7 +88,6 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -G Ninja \
-            --debug-find-pkg=Qt6WebEngineCore,Qt6WebEngineWidgets \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_TESTING=OFF \
@@ -114,7 +113,8 @@ jobs:
           DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
           ICON_FILE="$STAGING/usr/local/share/icons/hicolor/512x512/apps/files_fm_sync.png"
 
-          "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib" \
+            "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
             --appdir="$APPDIR" \
             --executable="$STAGING/usr/local/bin/files_fm_sync" \
             --desktop-file="$DESKTOP_FILE" \
@@ -122,6 +122,7 @@ jobs:
 
           QMAKE="$QT_ROOT_DIR/bin/qmake" \
           QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/gui" \
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib:$QT_ROOT_DIR/plugins/sqldrivers" \
             "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" --appdir="$APPDIR"
 
       - name: Assemble AppDir
