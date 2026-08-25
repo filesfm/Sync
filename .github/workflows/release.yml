@@ -257,9 +257,160 @@ jobs:
           path: ${{ steps.snapcraft.outputs.snap }}
           if-no-files-found: error
 
+  macos:
+    name: macOS
+    runs-on: macos-14
+    env:
+      # Matches the codesign identities' CN and the SocketApi Organizational
+      # Unit prefix used by the manual build script this job mirrors.
+      APP_SIGN_IDENTITY: 'Apple Distribution: Files.fm SIA (QZG24DC954)'
+      PKG_SIGN_IDENTITY: '3rd Party Mac Developer Installer: Files.fm SIA (QZG24DC954)'
+      TEAM_IDENTIFIER_PREFIX: 'QZG24DC954.'
+      BUILD_DIR: ${{ github.workspace }}/build
+      INSTALL_PREFIX: ${{ runner.temp }}/mac-install
+      DEPS_PREFIX: ${{ runner.temp }}/deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Homebrew build/runtime dependencies
+        run: |
+          brew install ninja openssl@3 libp11 sqlite3 pkg-config
+          # "Packages" (s.sudre.free.fr) provides packagesutil/packagesbuild,
+          # used by admin/osx/create_mac.sh to build the signed .pkg.
+          brew install --cask packages
+          # Optional: enables Sparkle auto-update support (BUILD_UPDATER
+          # defaults ON). find_package(Sparkle) is not REQUIRED, so a
+          # missing/failed install here does not fail the build.
+          brew install --cask sparkle || true
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: '6.11.1'
+          modules: 'qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning'
+          cache: true
+
+      # Matches the AppImage job's approach: build KDE's ECM from source
+      # rather than depending on a third-party Homebrew tap being available.
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/ecm-build"
+          cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Build and install KF6Archive
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_PREFIX_PATH="$DEPS_PREFIX;$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/karchive-build"
+          cmake --install "$RUNNER_TEMP/karchive-build"
+
+      - name: Build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/qtkeychain-build"
+          cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      # Standard GitHub Actions macOS codesigning pattern: import the
+      # Distribution/Installer certificate pair into a throwaway keychain
+      # that only exists for this job run. The .p12 must contain both the
+      # "Apple Distribution" and "3rd Party Mac Developer Installer"
+      # certificates + private keys used by sign_app.sh/create_mac.sh below.
+      #
+      # Requires two repo secrets, set under Settings -> Secrets and
+      # variables -> Actions:
+      #   MACOS_CERTIFICATE_P12       base64 of the exported .p12
+      #   MACOS_CERTIFICATE_PASSWORD  export password for that .p12
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          echo -n "$MACOS_CERTIFICATE_P12" | base64 --decode -o "$RUNNER_TEMP/certificate.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productsign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/"//g')
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+      - name: Configure, compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR;$DEPS_PREFIX;$(brew --prefix openssl@3);$(brew --prefix libp11)" \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_OWNCLOUD_OSX_BUNDLE=ON \
+            -DBUILD_FILE_PROVIDER_MODULE=0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSOCKETAPI_TEAM_IDENTIFIER_PREFIX="$TEAM_IDENTIFIER_PREFIX" \
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
+            -DMIRALL_VERSION_SUFFIX=""
+          cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
+
+          chmod +x "$BUILD_DIR/admin/osx/pre_install.sh"
+          "$BUILD_DIR/admin/osx/pre_install.sh"
+
+          cmake --install "$BUILD_DIR"
+
+          # post_install.sh registers the FinderSyncExt plugin against
+          # /Applications/*.app via pluginkit -- meaningful for a live
+          # end-user install, a no-op here since nothing is installed to
+          # /Applications on this runner. Skipped rather than run for no
+          # effect.
+
+      - name: Sign app bundle
+        run: |
+          ./admin/osx/sign_app.sh "$INSTALL_PREFIX/Files.fm Sync 2025.app" \
+            "$APP_SIGN_IDENTITY" "${TEAM_IDENTIFIER_PREFIX%.}"
+
+      - name: Build and sign installer package
+        run: |
+          chmod +x "$BUILD_DIR/admin/osx/create_mac.sh"
+          "$BUILD_DIR/admin/osx/create_mac.sh" "$INSTALL_PREFIX" "$BUILD_DIR" "$PKG_SIGN_IDENTITY"
+
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos
+          path: ${{ runner.temp }}/mac-install/*.pkg
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [appimage, flatpak, snap]
+    needs: [appimage, flatpak, snap, macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
