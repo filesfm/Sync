@@ -455,15 +455,23 @@ jobs:
           # pkg_resources` at build time, but recent setuptools releases
           # dropped bundling pkg_resources -- and pip's isolated build venv
           # (created fresh for build-time deps) always fetches an unpinned
-          # "latest" setuptools there regardless of PIP_CONSTRAINT, since
-          # that env var didn't reach it through Craft's subprocess call.
-          # Disable build isolation globally instead, so pip reuses Craft's
-          # own ambient Python -- into which a pkg_resources-compatible
-          # setuptools is pre-installed here.
+          # "latest" setuptools there. Neither PIP_CONSTRAINT nor
+          # PIP_NO_BUILD_ISOLATION set as env vars reached that pip call --
+          # Craft launches its subprocesses without inheriting this step's
+          # environment. pip.ini config files are read from disk regardless
+          # of how the process was launched, so use that instead: disable
+          # build isolation so pip reuses Craft's own ambient Python, into
+          # which a pkg_resources-compatible setuptools is pre-installed.
+          # Written to both the "site" location (next to Craft's own
+          # python.exe) and the per-user location, since it's not certain
+          # which one Craft's embedded interpreter resolves to.
           $craftPython = "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin\python.exe"
           & $craftPython -m pip install "setuptools<81" wheel
-          $env:PIP_NO_BUILD_ISOLATION = "1"
-          echo "PIP_NO_BUILD_ISOLATION=1" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $pipIniContent = "[install]`nno-build-isolation = true`n"
+          Set-Content -Path "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin\pip.ini" -Value $pipIniContent -Encoding ascii
+          New-Item -ItemType Directory -Force -Path "$env:APPDATA\pip" | Out-Null
+          Set-Content -Path "$env:APPDATA\pip\pip.ini" -Value $pipIniContent -Encoding ascii
 
           craft --install-deps nextcloud-client
 
