@@ -267,13 +267,19 @@ jobs:
       PKG_SIGN_IDENTITY: '3rd Party Mac Developer Installer: Files.fm SIA (QZG24DC954)'
       TEAM_IDENTIFIER_PREFIX: 'QZG24DC954.'
       BUILD_DIR: ${{ github.workspace }}/build
-      INSTALL_PREFIX: ${{ runner.temp }}/mac-install
-      DEPS_PREFIX: ${{ runner.temp }}/deps
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
+
+      # INSTALL_PREFIX/DEPS_PREFIX are set here rather than in the job-level
+      # env: block above because the `runner` context (needed for
+      # runner.temp) isn't available there -- only in step-level contexts.
+      - name: Set up paths
+        run: |
+          echo "INSTALL_PREFIX=$RUNNER_TEMP/mac-install" >> "$GITHUB_ENV"
+          echo "DEPS_PREFIX=$RUNNER_TEMP/deps" >> "$GITHUB_ENV"
 
       - name: Install Homebrew build/runtime dependencies
         run: |
