@@ -414,9 +414,118 @@ jobs:
           path: ${{ runner.temp }}/mac-install/*.pkg
           if-no-files-found: error
 
+  windows:
+    name: Windows
+    runs-on: windows-2022
+    env:
+      CRAFT_TARGET: windows-msvc2022_64-cl
+      CRAFT_MASTER_LOCATION: ${{ github.workspace }}\CraftMaster
+      CRAFT_MASTER_CONFIG: ${{ github.workspace }}\craftmaster.ini
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+
+      # Same KDE Craft toolchain (Qt, KF6, OpenSSL, etc. via the Nextcloud
+      # blueprints) already proven by windows-build-and-test.yml's compile
+      # job -- reused here rather than hand-rolling dependency installation
+      # the way the AppImage/macOS jobs do, since it's a working precedent
+      # already exercised on every PR in this repo.
+      - name: Install Craft Master with Nextcloud Client Deps
+        shell: pwsh
+        run: |
+          & cmd /C "git clone -q --depth=1 https://invent.kde.org/ggadinger/craftmaster.git ${{ env.CRAFT_MASTER_LOCATION }} 2>&1"
+
+          function craft() {
+              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
+              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
+          }
+
+          craft --add-blueprint-repository [git]https://github.com/nextcloud/desktop-client-blueprints.git
+          craft craft
+          craft --install-deps nextcloud-client
+
+      - name: Cache Install inkscape
+        id: cache-install-inkscape
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: C:\Program Files\inkscape
+          key: ${{ runner.os }}-cache-install-inkscape
+
+      - name: Install inkscape
+        if: steps.cache-install-inkscape.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: choco install inkscape
+
+      - name: Setup PATH
+        shell: pwsh
+        run: |
+          echo "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Compile
+        shell: pwsh
+        run: |
+          function craft() {
+              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
+              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
+          }
+
+          craft --src-dir ${{ github.workspace }} nextcloud-client
+
+      # craftmaster.ini has Packager/PackageType = NullsoftInstallerPackager
+      # for this target, so --package produces an NSIS-based installer .exe.
+      #
+      # No signing certificate exists yet (craftmaster.ini's [Env] section
+      # has CRAFT_CODESIGN_CERTIFICATE/SIGN_PACKAGE stubbed but unset), so
+      # this installer ships unsigned -- it will trigger SmartScreen
+      # warnings until signing is wired up. To enable it later: add a
+      # [CodeSigning] section to craftmaster.ini with Enabled = True,
+      # Certificate = ${Env:CRAFT_CODESIGN_CERTIFICATE}, CommonName, and
+      # Protected = True, then supply CRAFT_CODESIGN_CERTIFICATE (path to a
+      # decoded .pfx) and its password as job env/secrets, same pattern as
+      # the macOS job's certificate import. That signer expects a standard
+      # file-based .pfx + password; if the eventual cert is EV/HSM-bound
+      # instead, use [CodeSigning] WindowsCustomSignCommand to shell out to
+      # that provider's signing CLI instead.
+      - name: Package installer
+        shell: pwsh
+        run: |
+          function craft() {
+              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
+              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
+          }
+
+          craft --package nextcloud-client
+
+      - name: Locate installer
+        shell: pwsh
+        run: |
+          mkdir dist
+          $installer = Get-ChildItem -Path "${{ github.workspace }}\${{ env.CRAFT_TARGET }}" -Recurse -Include *.exe |
+            Where-Object { $_.Name -match '(?i)files.?fm|nextcloud' -and $_.DirectoryName -match '(?i)tmp|packages' } |
+            Select-Object -First 1
+          if (-not $installer) {
+            Write-Error "Could not locate a packaged installer .exe under ${{ env.CRAFT_TARGET }}"
+            exit 1
+          }
+          Copy-Item $installer.FullName -Destination dist\
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: windows
+          path: dist/*.exe
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [appimage, flatpak, snap, macos]
+    needs: [appimage, flatpak, snap, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
