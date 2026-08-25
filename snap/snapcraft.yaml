@@ -15,8 +15,8 @@ compression: lzo
 apps:
   files-fm-sync:
     command: usr/bin/files_fm_sync
-    common-id: com.files.fm.sync.nextcloud
-    desktop: usr/share/applications/com.files.fm.sync.nextcloud.desktop
+    common-id: com.files.fm.sync
+    desktop: usr/share/applications/com.files.fm.sync.desktop
     extensions: [kde-neon-6]
     plugs:
       - home

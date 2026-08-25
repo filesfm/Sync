@@ -1,4 +1,4 @@
-id: com.files.fm.sync.nextcloud
+id: com.files.fm.sync
 runtime: org.kde.Platform
 runtime-version: '6.10'
 sdk: org.kde.Sdk
@@ -94,5 +94,5 @@ modules:
       - type: dir
         path: .
     post-install:
-      - install -Dm644 com.files.fm.sync.nextcloud.metainfo.xml
-        /app/share/metainfo/com.files.fm.sync.nextcloud.metainfo.xml
+      - install -Dm644 com.files.fm.sync.metainfo.xml
+        /app/share/metainfo/com.files.fm.sync.metainfo.xml

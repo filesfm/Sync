@@ -32,7 +32,12 @@ set( APPLICATION_OCSP_STAPLING_ENABLED OFF )
 set( APPLICATION_FORBID_BAD_SSL OFF )
 
 set( LINUX_PACKAGE_SHORTNAME "nextcloud" )
-set( LINUX_APPLICATION_ID "${APPLICATION_REV_DOMAIN}.${LINUX_PACKAGE_SHORTNAME}")
+# The compiled app's own desktop-file/D-Bus ID -- kept equal to
+# APPLICATION_REV_DOMAIN alone (com.files.fm.sync) rather than appending
+# LINUX_PACKAGE_SHORTNAME, since that's the ID the Flatpak/Snap manifests
+# use and Flatpak requires the exported desktop file to be named exactly
+# <manifest-id>.desktop.
+set( LINUX_APPLICATION_ID "${APPLICATION_REV_DOMAIN}")
 
 set( THEME_CLASS            "NextcloudTheme" )
 set( WIN_SETUP_BITMAP_PATH  "${CMAKE_SOURCE_DIR}/admin/win/nsi" )

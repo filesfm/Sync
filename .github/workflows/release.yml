@@ -216,7 +216,7 @@ jobs:
               --ccache \
               --state-dir=.flatpak-builder \
               flatpak_app \
-              com.files.fm.sync.nextcloud.yml; then
+              com.files.fm.sync.yml; then
               break
             fi
             if [ "$attempt" = 3 ]; then
@@ -230,7 +230,7 @@ jobs:
           flatpak build-bundle repo files_fm_sync.flatpak \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
             --arch=x86_64 \
-            com.files.fm.sync.nextcloud master
+            com.files.fm.sync master
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

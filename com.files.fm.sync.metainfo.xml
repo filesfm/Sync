@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.files.fm.sync.nextcloud</id>
+  <id>com.files.fm.sync</id>
   <name>Files.fm Sync 2025</name>
   <summary>Keep your files synchronized with Files.fm</summary>
   <metadata_license>CC0-1.0</metadata_license>
@@ -23,7 +23,7 @@
       <li>Support for multiple accounts and folders</li>
     </ul>
   </description>
-  <launchable type="desktop-id">com.files.fm.sync.nextcloud.desktop</launchable>
+  <launchable type="desktop-id">com.files.fm.sync.desktop</launchable>
   <url type="homepage">https://files.fm</url>
   <content_rating type="oars-1.1" />
   <releases>
