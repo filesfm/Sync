@@ -283,7 +283,7 @@ jobs:
 
       - name: Install Homebrew build/runtime dependencies
         run: |
-          brew install ninja openssl@3 libp11 sqlite3 pkg-config
+          brew install ninja openssl@3 libp11 sqlite3 pkg-config librsvg
           # "Packages" (s.sudre.free.fr) provides packagesutil/packagesbuild,
           # used by admin/osx/create_mac.sh to build the signed .pkg.
           brew install --cask packages
