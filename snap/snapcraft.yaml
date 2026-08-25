@@ -24,6 +24,16 @@ apps:
       - network
       - network-bind
       - password-manager-service
+      - browser-support
+    environment:
+      # QtWebEngine embeds Chromium, which tries to set up its own
+      # internal sandbox on top of snap's own AppArmor/seccomp
+      # confinement. That nested sandboxing needs kernel privileges
+      # strict confinement doesn't grant, and crashes with
+      # "sandbox/linux/services/credentials.cc: Permission denied"
+      # otherwise. Disable it and rely on snap's own confinement,
+      # the same tradeoff other Chromium/Electron-based snaps make.
+      QTWEBENGINE_DISABLE_SANDBOX: "1"
 
 # The kde-neon-6 extension supplies Qt6 (incl. WebEngine) and KDE
 # Frameworks 6 (incl. KArchive/KGuiAddons) as content snaps, so only the
