@@ -11,7 +11,13 @@ codesign -s "$identity" --force --preserve-metadata=entitlements --verbose=4 --d
 # Verify the signature
 codesign -dv "$src_app"
 codesign --verify -v "$src_app"
-spctl -a -t exec -vv "$src_app"
+
+# Informational only: spctl's Gatekeeper exec assessment rejects apps
+# signed with an "Apple Distribution" cert (App Store submission identity)
+# since they're neither Developer ID-signed nor notarized/store-approved.
+# That's expected here and doesn't indicate a broken signature -- the
+# codesign --verify above already confirmed the signature itself is valid.
+spctl -a -t exec -vv "$src_app" || true
 
 # Validate that the key used for signing the binary matches the expected TeamIdentifier
 # needed to pass the SocketApi through the sandbox
