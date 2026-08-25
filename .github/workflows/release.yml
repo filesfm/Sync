@@ -453,25 +453,32 @@ jobs:
           # One of the Craft blueprints (python-modules/html5lib) does a
           # `pip install html5lib`. Its setup.py still does `import
           # pkg_resources` at build time, but recent setuptools releases
-          # dropped bundling pkg_resources -- and pip's isolated build venv
-          # (created fresh for build-time deps) always fetches an unpinned
-          # "latest" setuptools there. Neither PIP_CONSTRAINT nor
-          # PIP_NO_BUILD_ISOLATION set as env vars reached that pip call --
-          # Craft launches its subprocesses without inheriting this step's
-          # environment. pip.ini config files are read from disk regardless
-          # of how the process was launched, so use that instead: disable
-          # build isolation so pip reuses Craft's own ambient Python, into
-          # which a pkg_resources-compatible setuptools is pre-installed.
-          # Written to both the "site" location (next to Craft's own
-          # python.exe) and the per-user location, since it's not certain
-          # which one Craft's embedded interpreter resolves to.
-          $craftPython = "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin\python.exe"
-          & $craftPython -m pip install "setuptools<81" wheel
-
-          $pipIniContent = "[install]`nno-build-isolation = true`n"
-          Set-Content -Path "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin\pip.ini" -Value $pipIniContent -Encoding ascii
-          New-Item -ItemType Directory -Force -Path "$env:APPDATA\pip" | Out-Null
-          Set-Content -Path "$env:APPDATA\pip\pip.ini" -Value $pipIniContent -Encoding ascii
+          # dropped bundling pkg_resources. Two prior attempts to fix this
+          # (PIP_CONSTRAINT and PIP_NO_BUILD_ISOLATION as env vars, then a
+          # pip.ini with no-build-isolation=true) had zero effect -- the
+          # failure log was byte-identical each time. That matches pip's
+          # own `--isolated` behavior: the subprocess pip spawns internally
+          # to populate the isolated build-dependency venv deliberately
+          # ignores both env vars and config files, by design. No lever
+          # reachable from outside that subprocess can change it.
+          #
+          # So: locate the actual `pip install` call in Craft's own engine
+          # source (cloned into $CRAFT_TARGET\craft by `craft craft` above)
+          # and print it, to patch it precisely next -- rather than guess
+          # blind at Craft engine internals and risk breaking it.
+          $craftRoot = "${{ github.workspace }}\${{ env.CRAFT_TARGET }}"
+          foreach ($dir in @("$craftRoot\craft", "$craftRoot\etc\blueprints")) {
+            if (Test-Path $dir) {
+              Get-ChildItem -Path $dir -Recurse -Filter *.py -ErrorAction SilentlyContinue |
+                Select-String -Pattern 'no-binary' -List |
+                ForEach-Object {
+                  Write-Host "=== MATCH: $($_.Path) ==="
+                  $lineNum = $_.LineNumber
+                  Get-Content $_.Path | Select-Object -Skip ([Math]::Max(0, $lineNum - 15)) -First 30
+                  Write-Host "=== END MATCH ==="
+                }
+            }
+          }
 
           craft --install-deps nextcloud-client
 
