@@ -6,6 +6,7 @@ description: |
   Files.fm Sync 2025 is a desktop client that keeps local folders
   continuously synchronized with your Files.fm account. It is based on the
   Nextcloud desktop synchronization client.
+icon: theme/colored/files_fm_sync-icon.svg
 license: GPL-2.0-or-later
 grade: stable
 confinement: strict
