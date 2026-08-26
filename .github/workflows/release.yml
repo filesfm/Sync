@@ -265,6 +265,18 @@ jobs:
           snap: ${{ steps.snapcraft.outputs.snap }}
           release: edge
 
+      - name: Update Snap Store listing (summary, description, icon)
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          # `snapcraft upload --release` (above) only pushes the binary and
+          # releases it to a channel -- it never touches store listing
+          # metadata. That's the separate upload-metadata command, reading
+          # summary/description/icon out of the snap's embedded
+          # snapcraft.yaml. Requires the package_manage ACL in addition to
+          # package_push/package_release on the export-login credentials.
+          snapcraft upload-metadata ${{ steps.snapcraft.outputs.snap }} --force
+
   macos:
     name: macOS
     runs-on: macos-14
