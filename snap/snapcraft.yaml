@@ -1,6 +1,6 @@
 name: files-fm-sync
 # Keep in sync with MIRALL_VERSION in VERSION.cmake.
-version: '3.16.6'
+version: '3.16.7'
 summary: Keep your files synchronized with Files.fm
 description: |
   Files.fm Sync 2025 is a desktop client that keeps local folders
