@@ -467,7 +467,7 @@ jobs:
       # qtkeychain. This action writes that environment to $GITHUB_ENV so
       # it carries forward to every later step in this job.
       - name: Set up MSVC developer environment
-        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8f35e42c # v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
 
