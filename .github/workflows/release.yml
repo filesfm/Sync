@@ -856,6 +856,25 @@ jobs:
           cmake --install "$env:GITHUB_WORKSPACE\build"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # windeployqt (next step) only deploys Qt's own binaries -- these
+      # DEPS_PREFIX (libp11/KF6Archive/qtkeychain) and vcpkg
+      # (OpenSSL/zlib/bzip2/liblzma/zstd, all shared libs in vcpkg's
+      # default triplet) DLLs are ordinary runtime dependencies it doesn't
+      # know about and never copies. windeployqt also misclassifies
+      # qt6keychain.dll as a Qt library (matches its "qt6*" naming
+      # heuristic) and unconditionally tries to source it from
+      # $env:QT_ROOT_DIR\bin, failing outright if it's not there -- so a
+      # copy has to be planted there first.
+      - name: Stage third-party runtime DLLs
+        shell: pwsh
+        run: |
+          $qtkeychainDll = "$env:DEPS_PREFIX\bin\qt6keychain.dll"
+          if (-not (Test-Path $qtkeychainDll)) { Write-Error "qt6keychain.dll not found under DEPS_PREFIX\bin"; exit 1 }
+          Copy-Item $qtkeychainDll "$env:QT_ROOT_DIR\bin\qt6keychain.dll"
+
+          Get-ChildItem -Path "$env:DEPS_PREFIX" -Recurse -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
+          Get-ChildItem -Path "$env:VCPKG_INSTALLED\bin" -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
+
       # Unlike the macOS job's macdeployqt call, nothing in this project's
       # CMake stages Qt's runtime DLLs/plugins next to the exe -- without
       # this the MSI would install an app that can't start.
