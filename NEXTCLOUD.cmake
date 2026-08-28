@@ -74,7 +74,7 @@ option( APPLICATION_WIZARD_USE_CUSTOM_LOGO "Use the logo from ':/client/theme/co
 #
 if(WIN32)
     # Context Menu
-    set( WIN_SHELLEXT_CONTEXT_MENU_GUID      "{BC6988AB-ACE2-4B81-84DC-DC34F9B24401}" )
+    set( WIN_SHELLEXT_CONTEXT_MENU_GUID      "{A64B640C-9C3D-494F-934A-F5C5B528692E}" )
 
     # Overlays
     set( WIN_SHELLEXT_OVERLAY_GUID_ERROR     "{E0342B74-7593-4C70-9D61-22F294AAFE05}" )
@@ -84,7 +84,7 @@ if(WIN32)
     set( WIN_SHELLEXT_OVERLAY_GUID_WARNING   "{E4977F33-F93A-4A0A-9D3C-83DEA0EE8483}" )
 
     # MSI Upgrade Code (without brackets)
-    set( WIN_MSI_UPGRADE_CODE                "FD2FCCA9-BB8F-4485-8F70-A0621B84A7F4" )
+    set( WIN_MSI_UPGRADE_CODE                "DEC0DC8D-7D21-41B0-99C8-986CACB24484" )
 
     # Windows build options
     option( BUILD_WIN_MSI "Build MSI scripts and helper DLL" OFF )

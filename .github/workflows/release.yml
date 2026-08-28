@@ -438,38 +438,119 @@ jobs:
     name: Windows
     runs-on: windows-2022
     env:
-      CRAFT_TARGET: windows-msvc2022_64-cl
-      CRAFT_MASTER_LOCATION: ${{ github.workspace }}\CraftMaster
-      CRAFT_MASTER_CONFIG: ${{ github.workspace }}\craftmaster.ini
+      # Staging prefix for dependencies built from source below (ECM,
+      # KF6Archive, qtkeychain, libp11) -- mirrors DEPS_PREFIX in the macos
+      # job further up, just at job scope since github.workspace (unlike
+      # runner.temp) is available there.
+      DEPS_PREFIX: ${{ github.workspace }}\deps
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
 
-      - name: Set up Python
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
         with:
-          python-version: '3.12'
+          version: '6.11.1'
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning'
+          cache: true
 
-      # Same KDE Craft toolchain (Qt, KF6, OpenSSL, etc. via the Nextcloud
-      # blueprints) already proven by windows-build-and-test.yml's compile
-      # job -- reused here rather than hand-rolling dependency installation
-      # the way the AppImage/macOS jobs do, since it's a working precedent
-      # already exercised on every PR in this repo.
-      - name: Install Craft Master with Nextcloud Client Deps
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@8b297075da4cd2a5f1fd21fe011b499edf06e9d2 # v4
+
+      # windows-2022 runner images have VS2022 Build Tools but don't put
+      # the compiler toolchain (cl/link/nmake/rc/mt and their INCLUDE/LIB
+      # env vars) on PATH outside a "Developer Command Prompt" -- needed
+      # below for libp11 (nmake) and the Ninja+cl builds of KF6Archive and
+      # qtkeychain. This action writes that environment to $GITHUB_ENV so
+      # it carries forward to every later step in this job.
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8f35e42c # v1
+        with:
+          arch: x64
+
+      # windows-2022 runner images ship vcpkg preinstalled at
+      # $env:VCPKG_INSTALLATION_ROOT in classic (non-manifest) mode. Covers
+      # OpenSSL/SQLite3/ZLIB -- required unconditionally by root
+      # CMakeLists.txt's find_package(OpenSSL/SQLite3/ZLIB REQUIRED)
+      # (~line 235-243), same as the apt/brew installs in the appimage and
+      # macos jobs above -- plus pkgconf, needed by
+      # find_package(PkgConfig REQUIRED) for libp11 below.
+      - name: Install OpenSSL, SQLite3, ZLIB, pkgconf via vcpkg
         shell: pwsh
         run: |
-          & cmd /C "git clone -q --depth=1 https://invent.kde.org/ggadinger/craftmaster.git ${{ env.CRAFT_MASTER_LOCATION }} 2>&1"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:x64-windows sqlite3:x64-windows zlib:x64-windows pkgconf:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          function craft() {
-              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
-              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
-          }
+          $vcpkgInstalled = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          echo "VCPKG_INSTALLED=$vcpkgInstalled" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-          craft --add-blueprint-repository [git]https://github.com/nextcloud/desktop-client-blueprints.git
-          craft craft
-          craft --install-deps nextcloud-client
+          # CMake's FindPkgConfig looks for an executable literally named
+          # "pkg-config"; vcpkg's port only produces "pkgconf.exe". Copy it
+          # under the name CMake expects instead of hardcoding a
+          # version-specific host-tools path.
+          $pkgconf = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed" -Recurse -Filter pkgconf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkgconf) { Write-Error "pkgconf.exe not found after vcpkg install"; exit 1 }
+          Copy-Item $pkgconf.FullName (Join-Path $pkgconf.DirectoryName 'pkg-config.exe')
+          echo $pkgconf.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      # libp11 (github.com/OpenSC/libp11) is required unconditionally by
+      # root CMakeLists.txt (pkg_check_modules(OPENSC-LIBP11 libp11
+      # REQUIRED IMPORTED_TARGET), ~line 237) and included directly by
+      # src/libsync/clientsideencryption*.{h,cpp} for hardware-token
+      # support -- it's a real dependency on every platform, not just
+      # Linux/macOS, even though it's absent from README.md's system
+      # requirements list (that list predates this fork's e2e/hardware
+      # token support). No vcpkg port exists for it, and its
+      # Linux/macOS/Flatpak/Snap builds all use autotools (not viable here
+      # without MSYS2). Upstream does ship an MSVC nmake makefile
+      # (src/Makefile.mak) though, driven off OPENSSL_DIR pointing at an
+      # OpenSSL install laid out as <dir>/include + <dir>/lib/libcrypto.lib
+      # -- exactly vcpkg's classic install layout, so it consumes the
+      # OpenSSL installed above directly. nmake's Makefile.mak doesn't
+      # generate a libp11.pc (that's autotools-only, via libp11.pc.in), so
+      # one is hand-written below for pkgconf to find. Version pinned to
+      # match the one already used by the Flatpak/Snap builds
+      # (com.files.fm.sync.yml, snap/snapcraft.yaml).
+      - name: Build and install libp11 (nmake)
+        shell: pwsh
+        run: |
+          $libp11Src = "$env:RUNNER_TEMP\libp11"
+          $libp11Prefix = "$env:DEPS_PREFIX\libp11"
+          git clone --depth 1 --branch libp11-0.4.20 https://github.com/OpenSC/libp11.git $libp11Src
+
+          Push-Location "$libp11Src\src"
+          nmake /nologo /f Makefile.mak BUILD_FOR=WIN64 OPENSSL_DIR="$env:VCPKG_INSTALLED"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+          New-Item -ItemType Directory -Force -Path "$libp11Prefix\include", "$libp11Prefix\lib\pkgconfig", "$libp11Prefix\bin" | Out-Null
+          Copy-Item "$libp11Src\src\libp11.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\libp11.lib" "$libp11Prefix\lib\"
+          Copy-Item "$libp11Src\src\libp11.dll" "$libp11Prefix\bin\"
+
+          # CMAKE_FIND_LIBRARY_PREFIXES is empty under MSVC, so pkg-config's
+          # "-l<name>" must equal the .lib's full basename (libp11, not
+          # p11) for CMake's pkg_check_modules to resolve it via
+          # find_library.
+          $prefixForward = $libp11Prefix -replace '\\','/'
+          $pcLines = @(
+            "prefix=$prefixForward"
+            'libdir=${prefix}/lib'
+            'includedir=${prefix}/include'
+            ''
+            'Name: libp11'
+            'Description: Library for using PKCS#11 tokens with OpenSSL'
+            'Version: 0.4.20'
+            'Libs: -L${libdir} -llibp11'
+            'Cflags: -I${includedir}'
+          )
+          Set-Content -Path "$libp11Prefix\lib\pkgconfig\libp11.pc" -Value $pcLines -Encoding ascii
+
+          echo "PKG_CONFIG_PATH=$libp11Prefix\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$libp11Prefix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
       - name: Cache Install inkscape
         id: cache-install-inkscape
@@ -483,64 +564,126 @@ jobs:
         shell: pwsh
         run: choco install inkscape
 
-      - name: Setup PATH
+      # Same KF6Archive/ECM source-build pattern as the appimage/macos jobs
+      # above in this file. find_package(KF6Archive REQUIRED) is at
+      # src/libsync/CMakeLists.txt:2 -- like libp11, it's a real dependency
+      # on Windows too, despite not appearing in README.md's list.
+      - name: Build and install extra-cmake-modules
         shell: pwsh
         run: |
-          echo "${{ github.workspace }}\${{ env.CRAFT_TARGET }}\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$env:RUNNER_TEMP\ecm"
+          cmake -S "$env:RUNNER_TEMP\ecm" -B "$env:RUNNER_TEMP\ecm-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\ecm-build"
+          cmake --install "$env:RUNNER_TEMP\ecm-build"
 
-      - name: Compile
+      - name: Build and install KF6Archive
         shell: pwsh
         run: |
-          function craft() {
-              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
-              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
-          }
+          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$env:RUNNER_TEMP\karchive"
+          cmake -S "$env:RUNNER_TEMP\karchive" -B "$env:RUNNER_TEMP\karchive-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_WITH_QT6=ON `
+            -DBUILD_TESTING=OFF `
+            -DCMAKE_PREFIX_PATH="$env:DEPS_PREFIX;$env:VCPKG_INSTALLED;$env:QT_ROOT_DIR" `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\karchive-build"
+          cmake --install "$env:RUNNER_TEMP\karchive-build"
 
-          craft --src-dir ${{ github.workspace }} nextcloud-client
-
-      # craftmaster.ini has Packager/PackageType = NullsoftInstallerPackager
-      # for this target, so --package produces an NSIS-based installer .exe.
-      #
-      # No signing certificate exists yet (craftmaster.ini's [Env] section
-      # has CRAFT_CODESIGN_CERTIFICATE/SIGN_PACKAGE stubbed but unset), so
-      # this installer ships unsigned -- it will trigger SmartScreen
-      # warnings until signing is wired up. To enable it later: add a
-      # [CodeSigning] section to craftmaster.ini with Enabled = True,
-      # Certificate = ${Env:CRAFT_CODESIGN_CERTIFICATE}, CommonName, and
-      # Protected = True, then supply CRAFT_CODESIGN_CERTIFICATE (path to a
-      # decoded .pfx) and its password as job env/secrets, same pattern as
-      # the macOS job's certificate import. That signer expects a standard
-      # file-based .pfx + password; if the eventual cert is EV/HSM-bound
-      # instead, use [CodeSigning] WindowsCustomSignCommand to shell out to
-      # that provider's signing CLI instead.
-      - name: Package installer
+      - name: Build and install qtkeychain
         shell: pwsh
         run: |
-          function craft() {
-              python "${{ env.CRAFT_MASTER_LOCATION }}\CraftMaster.py" --config "${{ env.CRAFT_MASTER_CONFIG }}" --target ${{ env.CRAFT_TARGET }} -c $args
-              if($LASTEXITCODE -ne 0) {exit $LASTEXITCODE}
-          }
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$env:RUNNER_TEMP\qtkeychain"
+          cmake -S "$env:RUNNER_TEMP\qtkeychain" -B "$env:RUNNER_TEMP\qtkeychain-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_WITH_QT6=ON `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\qtkeychain-build"
+          cmake --install "$env:RUNNER_TEMP\qtkeychain-build"
 
-          craft --package nextcloud-client
+      # windows-2022 runners ship WiX Toolset v3.x preinstalled but don't
+      # put it on PATH or set WIX (actions/runner-images#9551). Needed
+      # before configure: NCMsiHelper's CMakeLists.txt reads $ENV{WIX}.
+      - name: Locate WiX Toolset
+        shell: pwsh
+        run: |
+          $wixRoot = Get-ChildItem -Path "C:\Program Files (x86)" -Directory -Filter "WiX Toolset v3.*" -ErrorAction SilentlyContinue |
+            Sort-Object Name -Descending | Select-Object -First 1
+          if (-not $wixRoot) { Write-Error "WiX Toolset v3.x not found under 'C:\Program Files (x86)'"; exit 1 }
+
+          $wixPath = "$($wixRoot.FullName)\"
+          echo "WIX=$wixPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$($wixRoot.FullName)\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      # BUILD_WIN_MSI=ON also pulls in admin/win/tools (NCMsiHelper) and
+      # shell_integration/windows, which install their WiX sources/DLL
+      # into <install-prefix>\msi\ alongside admin/win/msi's own files.
+      - name: Configure, compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          cmake -S "$env:GITHUB_WORKSPACE" -B "$env:GITHUB_WORKSPACE\build" -G Ninja `
+            -DCMAKE_PREFIX_PATH="$env:DEPS_PREFIX;$env:VCPKG_INSTALLED;$env:QT_ROOT_DIR" `
+            -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE\install" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_WIN_MSI=ON `
+            -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_ID" `
+            -DMIRALL_VERSION_SUFFIX=""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          cmake --build "$env:GITHUB_WORKSPACE\build" --parallel $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          cmake --install "$env:GITHUB_WORKSPACE\build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Unlike the macOS job's macdeployqt call, nothing in this project's
+      # CMake stages Qt's runtime DLLs/plugins next to the exe -- without
+      # this the MSI would install an app that can't start.
+      - name: Deploy Qt runtime with windeployqt
+        shell: pwsh
+        run: |
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # Nextcloud.wxs expects files_fm_sync.ico next to the exe (for
+      # Start Menu/Desktop shortcuts), but the .ico that ecm_add_app_icon
+      # generates for the RC resource is never installed as a loose file.
+      - name: Stage app icon for WiX
+        shell: pwsh
+        run: |
+          $icon = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\build" -Recurse -Filter "files_fm_sync.ico" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $icon) { Write-Error "files_fm_sync.ico not found under the build tree"; exit 1 }
+          Copy-Item $icon.FullName "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.ico"
+
+      # make-msi.bat references its WiX sources by relative path, so it
+      # must run from install\msi.
+      - name: Build MSI installer with WiX
+        shell: pwsh
+        run: |
+          Push-Location "$env:GITHUB_WORKSPACE\install\msi"
+          cmd /c make-msi.bat "$env:GITHUB_WORKSPACE\install\bin"
+          $exitCode = $LASTEXITCODE
+          Pop-Location
+          if ($exitCode -ne 0) { exit $exitCode }
 
       - name: Locate installer
         shell: pwsh
         run: |
-          mkdir dist
-          $installer = Get-ChildItem -Path "${{ github.workspace }}\${{ env.CRAFT_TARGET }}" -Recurse -Include *.exe |
-            Where-Object { $_.Name -match '(?i)files.?fm|nextcloud' -and $_.DirectoryName -match '(?i)tmp|packages' } |
-            Select-Object -First 1
-          if (-not $installer) {
-            Write-Error "Could not locate a packaged installer .exe under ${{ env.CRAFT_TARGET }}"
-            exit 1
-          }
+          mkdir dist | Out-Null
+          $installer = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\install\msi" -Filter "*.msi" | Select-Object -First 1
+          if (-not $installer) { Write-Error "Could not locate a packaged .msi under install\msi"; exit 1 }
           Copy-Item $installer.FullName -Destination dist\
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows
-          path: dist/*.exe
+          path: dist/*.msi
           if-no-files-found: error
 
   release:
