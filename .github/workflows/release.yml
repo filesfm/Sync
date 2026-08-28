@@ -434,6 +434,212 @@ jobs:
           path: ${{ runner.temp }}/mac-install/*.pkg
           if-no-files-found: error
 
+  macos-direct:
+    name: macOS (direct download)
+    runs-on: macos-14
+    env:
+      # Developer ID identities, distinct from the App Store submission
+      # identities used by the "macos" job above. A pkg signed with those
+      # App Store identities is rejected by Gatekeeper once it's downloaded
+      # from anywhere other than the App Store/TestFlight -- Developer ID
+      # signing plus notarization (below) is what makes a directly
+      # downloaded pkg installable without warnings.
+      APP_SIGN_IDENTITY: 'Developer ID Application: Files.fm SIA (QZG24DC954)'
+      PKG_SIGN_IDENTITY: 'Developer ID Installer: Files.fm SIA (QZG24DC954)'
+      TEAM_IDENTIFIER_PREFIX: 'QZG24DC954.'
+      BUILD_DIR: ${{ github.workspace }}/build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 1
+
+      # INSTALL_PREFIX/DEPS_PREFIX are set here rather than in the job-level
+      # env: block above because the `runner` context (needed for
+      # runner.temp) isn't available there -- only in step-level contexts.
+      - name: Set up paths
+        run: |
+          echo "INSTALL_PREFIX=$RUNNER_TEMP/mac-install" >> "$GITHUB_ENV"
+          echo "DEPS_PREFIX=$RUNNER_TEMP/deps" >> "$GITHUB_ENV"
+
+      - name: Install Homebrew build/runtime dependencies
+        run: |
+          brew install ninja openssl@3 libp11 sqlite3 pkg-config librsvg
+          # "Packages" (s.sudre.free.fr) provides packagesutil/packagesbuild,
+          # used by admin/osx/create_mac.sh to build the signed .pkg.
+          brew install --cask packages
+          # Optional: enables Sparkle auto-update support (BUILD_UPDATER
+          # defaults ON). find_package(Sparkle) is not REQUIRED, so a
+          # missing/failed install here does not fail the build.
+          brew install --cask sparkle || true
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+        with:
+          version: '6.11.1'
+          modules: 'qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning'
+          cache: true
+
+      # Matches the AppImage job's approach: build KDE's ECM from source
+      # rather than depending on a third-party Homebrew tap being available.
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/ecm-build"
+          cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Build and install KF6Archive
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_PREFIX_PATH="$DEPS_PREFIX;$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/karchive-build"
+          cmake --install "$RUNNER_TEMP/karchive-build"
+
+      - name: Build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$DEPS_PREFIX"
+          cmake --build "$RUNNER_TEMP/qtkeychain-build"
+          cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      # Same throwaway-keychain pattern as the "macos" job above, but this
+      # .p12 must instead contain the "Developer ID Application" and
+      # "Developer ID Installer" certificates + private keys -- generate
+      # them at developer.apple.com -> Certificates (same Apple Developer
+      # Program membership already used for the App Store certs), export
+      # both as one .p12 from Keychain Access, then base64 it.
+      #
+      # Requires two repo secrets, set under Settings -> Secrets and
+      # variables -> Actions:
+      #   MACOS_DEVELOPER_ID_CERTIFICATE_P12       base64 of the exported .p12
+      #   MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD  export password for that .p12
+      - name: Import signing certificate
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+          echo -n "$MACOS_CERTIFICATE_P12" | base64 --decode -o "$RUNNER_TEMP/certificate.p12"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/productsign
+          security set-key-partition-list -S apple-tool:,apple:,codesign:,productsign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/"//g')
+          rm -f "$RUNNER_TEMP/certificate.p12"
+
+      - name: Configure, compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cmake -S "$GITHUB_WORKSPACE" -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR;$DEPS_PREFIX;$(brew --prefix openssl@3);$(brew --prefix libp11)" \
+            -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_OWNCLOUD_OSX_BUNDLE=ON \
+            -DBUILD_FILE_PROVIDER_MODULE=0 \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DSOCKETAPI_TEAM_IDENTIFIER_PREFIX="$TEAM_IDENTIFIER_PREFIX" \
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
+            -DMIRALL_VERSION_SUFFIX=""
+          cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
+
+          chmod +x "$BUILD_DIR/admin/osx/pre_install.sh"
+          "$BUILD_DIR/admin/osx/pre_install.sh"
+
+          cmake --install "$BUILD_DIR"
+
+          # post_install.sh registers the FinderSyncExt plugin against
+          # /Applications/*.app via pluginkit -- meaningful for a live
+          # end-user install, a no-op here since nothing is installed to
+          # /Applications on this runner. Skipped rather than run for no
+          # effect.
+
+      - name: Sign app bundle
+        run: |
+          ./admin/osx/sign_app.sh "$INSTALL_PREFIX/Files.fm Sync 2025.app" \
+            "$APP_SIGN_IDENTITY" "${TEAM_IDENTIFIER_PREFIX%.}"
+
+      - name: Build and sign installer package
+        run: |
+          chmod +x "$BUILD_DIR/admin/osx/create_mac.sh"
+          "$BUILD_DIR/admin/osx/create_mac.sh" "$INSTALL_PREFIX" "$BUILD_DIR" "$PKG_SIGN_IDENTITY"
+
+          # Distinguishes this job's pkg from the App Store-signed one the
+          # "macos" job above produces -- both build from the same version
+          # and would otherwise share a filename, colliding when the
+          # release job merges every job's artifacts into one directory.
+          PKG_FILE="$(find "$INSTALL_PREFIX" -maxdepth 1 -name '*.pkg')"
+          mv "$PKG_FILE" "${PKG_FILE%.pkg}-direct.pkg"
+
+      # Gatekeeper blocks a Developer ID-signed pkg the first time it's
+      # opened after being downloaded (the quarantine flag Safari/Chrome/etc
+      # set on downloaded files) unless Apple has notarized it and the
+      # resulting ticket is stapled to the file -- codesign/productsign
+      # alone isn't sufficient for a pkg distributed outside the App Store.
+      #
+      # Requires an App Store Connect API key with at least the Developer
+      # role, generated at appstoreconnect.apple.com -> Users and Access ->
+      # Integrations -> Keys, and three more repo secrets:
+      #   APPLE_NOTARIZATION_KEY_ID      the key's "Key ID"
+      #   APPLE_NOTARIZATION_ISSUER_ID   the key's "Issuer ID"
+      #   APPLE_NOTARIZATION_KEY_P8      base64 of the downloaded AuthKey_*.p8
+      - name: Notarize and staple installer package
+        env:
+          APPLE_NOTARIZATION_KEY_ID: ${{ secrets.APPLE_NOTARIZATION_KEY_ID }}
+          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
+          APPLE_NOTARIZATION_KEY_P8: ${{ secrets.APPLE_NOTARIZATION_KEY_P8 }}
+        run: |
+          PKG_FILE="$(find "$INSTALL_PREFIX" -maxdepth 1 -name '*-direct.pkg')"
+          KEY_PATH="$RUNNER_TEMP/notarization-key.p8"
+          echo -n "$APPLE_NOTARIZATION_KEY_P8" | base64 --decode -o "$KEY_PATH"
+
+          xcrun notarytool submit "$PKG_FILE" \
+            --key "$KEY_PATH" \
+            --key-id "$APPLE_NOTARIZATION_KEY_ID" \
+            --issuer "$APPLE_NOTARIZATION_ISSUER_ID" \
+            --wait
+
+          xcrun stapler staple "$PKG_FILE"
+          xcrun stapler validate "$PKG_FILE"
+
+          # Simulates the Gatekeeper check macOS performs the first time a
+          # user opens a pkg fetched from a browser download.
+          spctl -a -vv -t install "$PKG_FILE"
+
+          rm -f "$KEY_PATH"
+
+      - name: Remove signing keychain
+        if: always()
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-direct
+          path: ${{ runner.temp }}/mac-install/*-direct.pkg
+          if-no-files-found: error
+
   windows:
     name: Windows
     runs-on: windows-2022
@@ -688,7 +894,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [appimage, flatpak, snap, macos, windows]
+    needs: [appimage, flatpak, snap, macos, macos-direct, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
