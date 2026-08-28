@@ -738,6 +738,11 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path "$libp11Prefix\include", "$libp11Prefix\lib\pkgconfig", "$libp11Prefix\bin" | Out-Null
           Copy-Item "$libp11Src\src\libp11.h" "$libp11Prefix\include\"
+          # libp11.h includes "p11_ver.h" and "p11_err.h" (both checked
+          # into src/ alongside it, not generated at build time) -- must
+          # be staged too.
+          Copy-Item "$libp11Src\src\p11_ver.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\p11_err.h" "$libp11Prefix\include\"
           Copy-Item "$libp11Src\src\libp11.lib" "$libp11Prefix\lib\"
           Copy-Item "$libp11Src\src\libp11.dll" "$libp11Prefix\bin\"
 
