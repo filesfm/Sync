@@ -818,6 +818,20 @@ jobs:
           cmake --build "$env:RUNNER_TEMP\qtkeychain-build"
           cmake --install "$env:RUNNER_TEMP\qtkeychain-build"
 
+      # ecm_add_app_icon (src/gui/CMakeLists.txt, via ECMAddAppIcon.cmake)
+      # silently skips generating files_fm_sync.ico -- and embedding an
+      # icon in the exe at all -- if IcoTool isn't found; it's not part
+      # of Qt/vcpkg/KDE Frameworks, and windows-2022 runners don't ship
+      # it. Installed via MSYS2 (preinstalled at C:\msys64 on this
+      # image) since no vcpkg/choco port exists. IcoTool_EXECUTABLE is
+      # passed directly to CMake below rather than adding mingw64\bin to
+      # PATH, to avoid its gcc/ld shadowing the MSVC toolchain.
+      - name: Install icoutils (icotool) via MSYS2
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-icoutils
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       # windows-2022 runners ship WiX Toolset v3.x preinstalled but don't
       # put it on PATH or set WIX (actions/runner-images#9551). Needed
       # before configure: NCMsiHelper's CMakeLists.txt reads $ENV{WIX}.
@@ -846,6 +860,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=OFF `
             -DBUILD_WIN_MSI=ON `
+            -DIcoTool_EXECUTABLE="C:\msys64\mingw64\bin\icotool.exe" `
             -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_ID" `
             -DMIRALL_VERSION_SUFFIX=""
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
