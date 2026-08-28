@@ -683,12 +683,14 @@ jobs:
       # CMakeLists.txt's find_package(OpenSSL/SQLite3/ZLIB REQUIRED)
       # (~line 235-243), same as the apt/brew installs in the appimage and
       # macos jobs above -- plus pkgconf, needed by
-      # find_package(PkgConfig REQUIRED) for libp11 below, and zstd, which
-      # KF6Archive's own CMakeLists.txt requires via pkg_check_modules.
-      - name: Install OpenSSL, SQLite3, ZLIB, zstd, pkgconf via vcpkg
+      # find_package(PkgConfig REQUIRED) for libp11 below, and
+      # bzip2/liblzma/zstd, which KF6Archive requires (REQUIRED packages
+      # per its ecm_feature_summary output) -- same libs the appimage
+      # job installs via libbz2-dev/liblzma-dev/libzstd-dev.
+      - name: Install OpenSSL, SQLite3, ZLIB, BZip2, LZMA, zstd, pkgconf via vcpkg
         shell: pwsh
         run: |
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:x64-windows sqlite3:x64-windows zlib:x64-windows zstd:x64-windows pkgconf:x64-windows
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:x64-windows sqlite3:x64-windows zlib:x64-windows bzip2:x64-windows liblzma:x64-windows zstd:x64-windows pkgconf:x64-windows
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           $vcpkgInstalled = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
