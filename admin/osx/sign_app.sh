@@ -6,7 +6,7 @@ src_app="$1"
 identity="$2"
 team_identifier="$3"
 
-codesign -s "$identity" --force --preserve-metadata=entitlements --verbose=4 --deep "$src_app"
+codesign -s "$identity" --force --preserve-metadata=entitlements --options runtime --timestamp --verbose=4 --deep "$src_app"
 
 # Verify the signature
 codesign -dv "$src_app"
