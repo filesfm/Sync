@@ -1,0 +1,526 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} / ${{ matrix.build_type }}
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        build_type: [Debug, Release]
+        include:
+          - os: ubuntu-latest
+            qt_arch: linux_gcc_64
+            qt_version: '6.9.0'
+            ccache_variant: ccache
+          - os: windows-latest
+            qt_arch: win64_msvc2022_64
+            qt_version: '6.10.3'
+            ccache_variant: ''
+          - os: macos-latest
+            qt_arch: clang_64
+            qt_version: '6.11.1'
+            ccache_variant: ccache
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up MSVC environment
+        if: matrix.os == 'windows-latest'
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Install Linux build/runtime dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential patchelf fuse libfuse2 \
+            libssl-dev libsqlite3-dev libp11-dev \
+            libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
+            libglib2.0-dev libdbus-1-dev libcloudproviders-dev libsecret-1-dev \
+            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
+            librsvg2-bin
+
+      - name: Install Homebrew build/runtime dependencies
+        if: matrix.os == 'macos-latest'
+        run: brew install ninja openssl@3 libp11 sqlite3 pkg-config librsvg
+
+      - name: Install Qt
+        uses: ./.github/actions/install-qt
+        with:
+          version: ${{ matrix.qt_version }}
+          arch: ${{ matrix.qt_arch }}
+
+      # windows-latest ships vcpkg preinstalled in classic (non-manifest)
+      # mode. Same packages/reasoning as release.yml's windows job: OpenSSL/
+      # SQLite3/ZLIB are unconditional root CMakeLists.txt requirements,
+      # pkgconf is needed by libp11's PkgConfig lookup, and bzip2/liblzma/
+      # zstd are KF6Archive's REQUIRED dependencies.
+      - name: Install OpenSSL, SQLite3, ZLIB, BZip2, LZMA, zstd, pkgconf via vcpkg
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:x64-windows sqlite3:x64-windows zlib:x64-windows bzip2:x64-windows liblzma:x64-windows zstd:x64-windows pkgconf:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $vcpkgInstalled = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows"
+          echo "VCPKG_INSTALLED=$vcpkgInstalled" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "PKG_CONFIG_PATH=$vcpkgInstalled\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+          $pkgconf = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed" -Recurse -Filter pkgconf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkgconf) { Write-Error "pkgconf.exe not found after vcpkg install"; exit 1 }
+          Copy-Item $pkgconf.FullName (Join-Path $pkgconf.DirectoryName 'pkg-config.exe')
+          echo $pkgconf.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Set up dependency staging prefix
+        if: matrix.os == 'windows-latest' || matrix.os == 'macos-latest'
+        shell: bash
+        run: echo "DEPS_PREFIX=$RUNNER_TEMP/deps" >> "$GITHUB_ENV"
+
+      - name: Build and install libp11 (nmake)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $libp11Src = "$env:RUNNER_TEMP\libp11"
+          $libp11Prefix = "$env:DEPS_PREFIX\libp11"
+          git clone --depth 1 --branch libp11-0.4.20 https://github.com/OpenSC/libp11.git $libp11Src
+
+          Push-Location "$libp11Src\src"
+          nmake /nologo /f Makefile.mak BUILD_FOR=WIN64 OPENSSL_DIR="$env:VCPKG_INSTALLED"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+          New-Item -ItemType Directory -Force -Path "$libp11Prefix\include", "$libp11Prefix\lib\pkgconfig", "$libp11Prefix\bin" | Out-Null
+          Copy-Item "$libp11Src\src\libp11.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\p11_ver.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\p11_err.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\libp11.lib" "$libp11Prefix\lib\"
+          Copy-Item "$libp11Src\src\libp11.dll" "$libp11Prefix\bin\"
+
+          $prefixForward = $libp11Prefix -replace '\\','/'
+          $pcLines = @(
+            "prefix=$prefixForward"
+            'libdir=${prefix}/lib'
+            'includedir=${prefix}/include'
+            ''
+            'Name: libp11'
+            'Description: Library for using PKCS#11 tokens with OpenSSL'
+            'Version: 0.4.20'
+            'Libs: -L${libdir} -llibp11'
+            'Cflags: -I${includedir}'
+          )
+          Set-Content -Path "$libp11Prefix\lib\pkgconfig\libp11.pc" -Value $pcLines -Encoding ascii
+
+          echo "PKG_CONFIG_PATH=$libp11Prefix\lib\pkgconfig;$env:PKG_CONFIG_PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$libp11Prefix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache Install inkscape
+        if: matrix.os == 'windows-latest'
+        id: cache-install-inkscape
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: C:\Program Files\inkscape
+          key: ${{ runner.os }}-cache-install-inkscape
+
+      - name: Install inkscape
+        if: matrix.os == 'windows-latest' && steps.cache-install-inkscape.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: choco install inkscape
+
+      # Ubuntu's build-and-test leg builds ECM/KF6Archive/qtkeychain the
+      # same way release.yml's appimage job does, since neither is
+      # packaged for jammy; macOS/Windows need the same because
+      # find_package(KF6Archive REQUIRED) applies on every platform.
+      - name: Build and install extra-cmake-modules
+        shell: bash
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+          cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo cmake --install "$RUNNER_TEMP/ecm-build"
+          else
+            cmake --install "$RUNNER_TEMP/ecm-build"
+          fi
+
+      - name: Build and install KF6Archive
+        shell: bash
+        run: |
+          git clone --depth 1 --branch v6.29.0 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          prefix="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_PREFIX_PATH="$DEPS_PREFIX;$VCPKG_INSTALLED;$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo cmake --install "$RUNNER_TEMP/karchive-build"
+          else
+            cmake --install "$RUNNER_TEMP/karchive-build"
+          fi
+
+      - name: Build and install qtkeychain
+        shell: bash
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          prefix="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DCMAKE_INSTALL_PREFIX="$prefix"
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+            sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
+          else
+            cmake --install "$RUNNER_TEMP/qtkeychain-build"
+          fi
+
+      - name: Refresh dynamic linker cache
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo ldconfig
+
+      - name: ccache
+        if: matrix.os != 'windows-latest'
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: ${{ matrix.os }}-${{ matrix.build_type }}
+          variant: ${{ matrix.ccache_variant }}
+          max-size: 300M
+
+      # macOS needs Homebrew's openssl@3/libp11 prefixes added too, same
+      # as release.yml's macos job -- Linux/Windows resolve those via
+      # system dev packages/vcpkg instead, already on CMake's default
+      # search path.
+      - name: Compute CMAKE_PREFIX_PATH
+        shell: bash
+        run: |
+          prefix_path="$DEPS_PREFIX;$VCPKG_INSTALLED;$QT_ROOT_DIR"
+          if [ "${{ matrix.os }}" = "macos-latest" ]; then
+            prefix_path="$prefix_path;$(brew --prefix openssl@3);$(brew --prefix libp11)"
+          fi
+          echo "CMAKE_PREFIX_PATH_EXTRA=$prefix_path" >> "$GITHUB_ENV"
+
+      - name: Configure
+        shell: bash
+        run: >
+          cmake -S . -B build/${{ matrix.build_type }} -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DCMAKE_PREFIX_PATH="$CMAKE_PREFIX_PATH_EXTRA"
+          -DBUILD_TESTING=ON
+          -DBUILD_SHELL_INTEGRATION=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=${{ matrix.ccache_variant }}
+          -DCMAKE_CXX_COMPILER_LAUNCHER=${{ matrix.ccache_variant }}
+
+      - name: Build
+        shell: bash
+        run: cmake --build build/${{ matrix.build_type }} --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+
+      - name: Run qmllint
+        if: matrix.os == 'ubuntu-latest' && matrix.build_type == 'Release'
+        shell: bash
+        run: find src/gui -name '*.qml' -print0 | xargs -0 -r qmllint -I build/${{ matrix.build_type }}/src
+
+      - name: Test
+        if: false
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build/${{ matrix.build_type }} --output-on-failure
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sync-${{ matrix.os }}-${{ matrix.build_type }}
+          path: build/${{ matrix.build_type }}/bin
+          if-no-files-found: error
+
+  sanitize:
+    name: Sanitizers
+    needs: lint
+    if: false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Install Linux build/runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential patchelf fuse libfuse2 \
+            libssl-dev libsqlite3-dev libp11-dev \
+            libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
+            libglib2.0-dev libdbus-1-dev libcloudproviders-dev libsecret-1-dev \
+            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
+            librsvg2-bin
+
+      - name: Install Qt
+        uses: ./.github/actions/install-qt
+        with:
+          version: '6.9.0'
+          arch: linux_gcc_64
+
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Build and install KF6Archive
+        run: |
+          git clone --depth 1 --branch v6.29.0 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/karchive-build"
+
+      - name: Build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      - name: Refresh dynamic linker cache
+        run: sudo ldconfig
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: sanitize
+          variant: ccache
+          max-size: 300M
+
+      - name: Configure (ASan + UBSan + LSan)
+        run: >
+          cmake -S . -B build/Sanitize-asan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined,leak -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined,leak"
+
+      - name: Build (ASan + UBSan + LSan)
+        run: cmake --build build/Sanitize-asan --parallel "$(nproc)"
+
+      - name: Test (ASan + UBSan + LSan)
+        env:
+          QT_QPA_PLATFORM: offscreen
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ctest --test-dir build/Sanitize-asan --output-on-failure
+
+      # TSan is temporarily disabled, matching WorkTime's ci.yml.
+      - name: Configure (TSan)
+        if: false
+        run: >
+          cmake -S . -B build/Sanitize-tsan -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_CXX_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+          -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+
+      - name: Build (TSan)
+        if: false
+        run: cmake --build build/Sanitize-tsan --parallel "$(nproc)"
+
+      - name: Test (TSan)
+        if: false
+        env:
+          QT_QPA_PLATFORM: offscreen
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --test-dir build/Sanitize-tsan --output-on-failure
+
+  sonarcloud:
+    name: SonarCloud
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # SonarCloud's new-code/blame analysis needs full history.
+          fetch-depth: 0
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Install Linux build/runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential patchelf fuse libfuse2 \
+            libssl-dev libsqlite3-dev libp11-dev \
+            libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
+            libglib2.0-dev libdbus-1-dev libcloudproviders-dev libsecret-1-dev \
+            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
+            librsvg2-bin
+
+      - name: Install Qt
+        uses: ./.github/actions/install-qt
+        with:
+          version: '6.9.0'
+          arch: linux_gcc_64
+
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Build and install KF6Archive
+        run: |
+          git clone --depth 1 --branch v6.29.0 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/karchive-build"
+
+      - name: Build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
+          sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      - name: Refresh dynamic linker cache
+        run: sudo ldconfig
+
+      - name: ccache
+        uses: hendrikmuhs/ccache-action@f09c25b45002a07be2955cbe52e8cee55643f89d # v1.2.24
+        with:
+          key: sonar
+          max-size: 300M
+
+      # Sync's coverage support comes from ECM's ECMCoverageOption module
+      # (cmake/modules/ECMCoverageOption.cmake), which adds a
+      # BUILD_COVERAGE option (-fprofile-arcs -ftest-coverage + -lgcov) --
+      # unlike WorkTime, there is no ENABLE_COVERAGE flag here. ctest's
+      # own "-T Coverage" step then runs gcov and writes
+      # build/Testing/CoverageInfo, which is exactly the path
+      # sonar-project.properties' sonar.cfamily.gcov.reportsPath already
+      # points at -- so the build dir here is "build" (not "build/Sonar")
+      # to line up with that existing, unmodified setting.
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DBUILD_COVERAGE=ON
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: cmake --build build --parallel "$(nproc)"
+
+      - name: Test with coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure -T Coverage
+
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install actionlint
+        env:
+          ACTIONLINT_URL: https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz
+          ACTIONLINT_SHA256: 023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757
+        run: |
+          curl -sL -o actionlint.tar.gz "$ACTIONLINT_URL"
+          echo "$ACTIONLINT_SHA256  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
+          sudo mv actionlint /usr/local/bin/actionlint
+
+      - name: Run actionlint
+        run: actionlint
+
+      - name: Install shellcheck
+        env:
+          SHELLCHECK_URL: https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz
+          SHELLCHECK_SHA256: 6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87
+        run: |
+          curl -sL -o shellcheck.tar.xz "$SHELLCHECK_URL"
+          echo "$SHELLCHECK_SHA256  shellcheck.tar.xz" | sha256sum -c -
+          tar xf shellcheck.tar.xz shellcheck-v0.10.0/shellcheck
+          sudo mv shellcheck-v0.10.0/shellcheck /usr/local/bin/shellcheck
+
+      - name: Run shellcheck
+        run: |
+          shopt -s nullglob
+          scripts=(.github/scripts/*.sh .github/scripts/packages/*.sh)
+          if [ ${#scripts[@]} -gt 0 ]; then
+            shellcheck "${scripts[@]}"
+          fi
+
+      - name: Install yamllint
+        run: pip install --quiet yamllint==1.38.0
+
+      - name: Run yamllint
+        run: yamllint .
+
+      - name: Run markdownlint
+        run: npx --yes markdownlint-cli2@0.15.0 "README.md" "AUTHORS.md"
+
+  trivy:
+    name: Trivy
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run Trivy vulnerability, secret, misconfiguration and license scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # 0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig,license
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: '0'
+
+      - name: Upload results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          sarif_file: trivy-results.sarif

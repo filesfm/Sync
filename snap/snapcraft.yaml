@@ -88,7 +88,7 @@ parts:
       - zlib1g-dev
       - pkg-config
       - librsvg2-bin
-    # OpenSSL/SQLite/zlib runtime libraries are expected to already be
-    # staged by the kf6-core24/qt6-core24 content snaps. Run `snapcraft
-    # lint` (or a full build) after any base/runtime bump and add explicit
-    # stage-packages here if it reports missing libraries.
+      # OpenSSL/SQLite/zlib runtime libraries are expected to already be
+      # staged by the kf6-core24/qt6-core24 content snaps. Run `snapcraft
+      # lint` (or a full build) after any base/runtime bump and add explicit
+      # stage-packages here if it reports missing libraries.

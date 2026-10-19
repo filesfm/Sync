@@ -1,107 +1,80 @@
-# Nextcloud Desktop Client
+# Files.fm Sync
 
-The Nextcloud Desktop Client is a tool to synchronize files from Nextcloud Server with your computer.
+Files.fm Sync is a desktop client that keeps local folders continuously synchronized with your [Files.fm](https://files.fm) account.
 
 <p align="center">
-    <img src="doc/images/main_dialog_christine.png" alt="Desktop Client on Windows" width="450">
+    <img src="doc/images/main_dialog_christine.png" alt="Files.fm Sync desktop client" width="450">
 </p>
 
-## :rocket: Releases
-For the latest stable recommended version, please refer to the [download page https://nextcloud.com/install/#install-clients](https://nextcloud.com/install/#install-clients)
+## SonarQube
 
-## Contributing to the desktop client
-:v: Please read the [Code of Conduct](https://nextcloud.com/community/code-of-conduct/). This document offers some guidance to ensure Nextcloud participants can cooperate effectively in a positive and inspiring atmosphere and to explain how together we can strengthen and support each other.
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=filesfm_Sync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=filesfm_Sync)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=filesfm_Sync&metric=coverage)](https://sonarcloud.io/summary/new_code?id=filesfm_Sync)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=filesfm_Sync&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=filesfm_Sync)
 
-### 👪 Join the team
-There are many ways to contribute, of which development is only one! Find out [how to get involved](https://nextcloud.com/contribute/), including as a translator, designer, tester, helping others, and much more! 😍
+## Package status
 
-### Help testing
-Download and install the client:<br>
-[🔽 All releases](https://github.com/nextcloud-releases/desktop/releases)<br>
-[🔽 Daily master builds](https://download.nextcloud.com/desktop/daily)
+| Package         | Latest version                                                                                                                                                     | Test status                                                                                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS           | ![macOS version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fmacos-version.json)     | [![macOS test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fmacos-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)     |
+| Windows         | ![Windows version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fwindows-version.json) | [![Windows test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fwindows-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml) |
+| Fedora          | ![Fedora version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Ffedora-version.json)   | [![Fedora test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Ffedora-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)   |
+| Ubuntu          | ![Ubuntu version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fubuntu-version.json)   | [![Ubuntu test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fubuntu-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)   |
+| Linux (General) | ![Linux version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-version.json)     | [![Linux test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)     |
 
-### Reporting issues
-If you find any bugs or have any suggestion for improvement, please
-[open an issue in this repository](https://github.com/nextcloud/desktop/issues).
+## Contents
 
-### Bug fixing and development
-#### 1. 🚀 Set up your local development environment
+- [Supported Operating Systems](#supported-operating-systems)
+- [Supported Desktop Environments](#supported-desktop-environments-on-linux)
+- [Installing](#installing)
+- [Updating](#updating)
+- [Removing](#removing)
 
-1.1 System requirements
-- [Windows 10, Windows 11]((https://github.com/nextcloud/desktop-client-blueprints/)), Mac OS > 10.14 or Linux
+---
 
-> [!NOTE]  
-> Find the system requirements and instructions on [how to work on Windows with KDE Craft](https://github.com/nextcloud/desktop-client-blueprints/) on our [desktop client blueprints repository](https://github.com/nextcloud/desktop-client-blueprints/).
+## Supported operating systems
 
-- [🔽 Inkscape (to generate icons)](https://inkscape.org/release/)
-- Developer tools: cmake, clang/gcc/g++:
-- Qt6 since 3.14, Qt5 for earlier versions
-- OpenSSL
-- [🔽 QtKeychain](https://github.com/frankosterfeld/qtkeychain)
-- SQLite
+- macOS
+- Windows
+- Linux
 
-1.2 Optional
-- [Qt Creator IDE](https://www.qt.io/product/development-tools)
-- [delta: A viewer for git and diff output](https://github.com/dandavison/delta)
+## Supported desktop environments on Linux
 
-> [!TIP]
-> We highly recommend [Nextcloud development environment on Docker Compose](https://juliusknorr.github.io/nextcloud-docker-dev/) for testing/bug fixing/development.<br>
-> ▶️ https://juliusknorr.github.io/nextcloud-docker-dev/
+- GNOME (Nautilus)
+- Cinnamon (Nemo)
+- MATE (Caja)
 
-1.3 Step by step instructions on how to build the client to contribute
-1. Clone the Github repository:
-```
-git clone https://github.com/nextcloud/desktop.git
-```
-2. Create <build directory>:
-```
-mkdir <build directory>
-```
-3. Compile:
-```
-cd <build directory>
-cmake -S <cloned desktop repo> -B build -DCMAKE_INSTALL_PREFIX=<dependencies> -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=. -DNEXTCLOUD_DEV=ON
-```
+---
 
-> [!TIP]
-> The cmake variabel NEXTCLOUD_DEV allows you to run your own build of the client while developing in parallel with an installed version of the client.
+## Installing
 
-4. Build it:
-- Windows:
-```
-cmake --build .
-```
-- Other platforms:
-```
-make
-```
+| Operating system | Terminal command                                                                                   |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS            | `brew install --cask filesfm/macos/files-fm-sync`                                                   |
+| Windows          | `choco install -y files-fm-sync`                                                                    |
+| Fedora           | `sudo dnf copr enable -y filesfm/Sync && sudo dnf install -y files-fm-sync`                          |
+| Ubuntu           | `sudo add-apt-repository -y ppa:filesfm/sync && sudo apt update && sudo apt install -y files-fm-sync` |
+| Linux (General)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
 
-> [!TIP]
-> For building the client for mac OS we have a tool called mac-crafter.
-> You will find instructions on how to use it at [admin/osx/mac-crafter](https://github.com/nextcloud/desktop/tree/32305e4c15ff95d00fae07e82e750fe9051b2250/admin/osx/mac-crafter).
+---
 
-5. 🐛 [Pick a good first issue](https://github.com/nextcloud/desktop/labels/good%20first%20issue)
-6. 👩‍🔧 Create a branch and make your changes. Remember to sign off your commits using `git commit -sm "Your commit message"`
-7. ⬆ Create a [pull request](https://opensource.guide/how-to-contribute/#opening-a-pull-request) and `@mention` the people from the issue to review
-8. 👍 Fix things that come up during a review
-9. 🎉 Wait for it to get merged!
+## Updating
 
-## Get in touch 💬
-* [📋 Forum](https://help.nextcloud.com)
-* [👥 Facebook](https://www.facebook.com/nextclouders)
-* [🐣 Twitter](https://twitter.com/Nextclouders)
-* [🐘 Mastodon](https://mastodon.xyz/@nextcloud)
+| Operating system | Terminal command                                        |
+| ----------------- | ------------------------------------------------------------------- |
+| macOS            | `brew upgrade --cask filesfm/macos/files-fm-sync`        |
+| Windows          | `choco upgrade -y files-fm-sync`                         |
+| Fedora           | `sudo dnf upgrade -y files-fm-sync`                      |
+| Ubuntu           | `sudo apt update && sudo apt upgrade -y files-fm-sync`   |
+| Linux (General)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
 
-You can also [get support for Nextcloud](https://nextcloud.com/support)!
+---
 
-## :scroll: License
+## Removing
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful, but
-    WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
-    or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
-    for more details.
+| Operating system | Terminal command                                                                       |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| macOS            | `brew uninstall --cask filesfm/macos/files-fm-sync`                                    |
+| Windows          | `choco uninstall -y files-fm-sync`                                                     |
+| Fedora           | `sudo dnf remove -y files-fm-sync && sudo dnf copr disable -y filesfm/Sync`            |
+| Ubuntu           | `sudo apt remove -y files-fm-sync && sudo add-apt-repository -y --remove ppa:filesfm/sync` |
