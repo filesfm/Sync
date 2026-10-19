@@ -2,10 +2,6 @@
 
 Files.fm Sync is a desktop client that keeps local folders continuously synchronized with your [Files.fm](https://files.fm) account.
 
-<p align="center">
-    <img src="doc/images/main_dialog_christine.png" alt="Files.fm Sync desktop client" width="450">
-</p>
-
 ## SonarQube
 
 [![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=filesfm_Sync&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=filesfm_Sync)
