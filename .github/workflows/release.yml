@@ -460,7 +460,7 @@ jobs:
             # for a pkg, "open" for a disk image.
             case "$FILE" in
               *.pkg) spctl -a -vv -t install "$FILE" ;;
-              *.dmg) spctl -a -vv -t open "$FILE" ;;
+              *.dmg) spctl -a -vv -t open --context context:primary-signature "$FILE" ;;
             esac
           done
 
