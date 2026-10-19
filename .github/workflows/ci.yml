@@ -131,7 +131,7 @@ jobs:
       - name: Cache Install inkscape
         if: matrix.os == 'windows-latest'
         id: cache-install-inkscape
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: C:\Program Files\inkscape
           key: ${{ runner.os }}-cache-install-inkscape
@@ -521,6 +521,6 @@ jobs:
           exit-code: '0'
 
       - name: Upload results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4.39.0
         with:
           sarif_file: trivy-results.sarif
