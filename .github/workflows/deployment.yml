@@ -1,0 +1,251 @@
+name: Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v3.16.7)'
+        required: true
+      channel:
+        description: 'Snap Store channel to release to'
+        required: true
+        default: edge
+        type: choice
+        options:
+          - edge
+          - beta
+          - candidate
+          - stable
+
+permissions:
+  contents: read
+
+jobs:
+  publish-snap:
+    name: Publish Snap
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download snap from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.snap' \
+            --dir dist
+
+          count=$(find dist -maxdepth 1 -name '*.snap' | wc -l)
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly one .snap asset on release ${{ inputs.tag }}, found $count"
+            exit 1
+          fi
+
+          echo "SNAP_FILE=$(find dist -maxdepth 1 -name '*.snap')" >> "$GITHUB_ENV"
+
+      - name: Publish to Snap Store
+        uses: snapcore/action-publish@214b86e5ca036ead1668c79afb81e550e6c54d40 # v1.2.0
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ env.SNAP_FILE }}
+          release: ${{ inputs.channel }}
+
+      - name: Push Snap Store listing metadata (icon, summary, description)
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: /snap/bin/snapcraft upload-metadata "$SNAP_FILE" --force
+
+  publish-chocolatey:
+    name: Publish Chocolatey
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build Chocolatey package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${{ inputs.tag }}" -replace '^v', ''
+          ./resource/windows/chocolatey/pack-release.ps1 -Version $version -Tag "${{ inputs.tag }}"
+
+      - name: Push to Chocolatey Community Repository
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $version = "${{ inputs.tag }}" -replace '^v', ''
+          $nupkg = "resource/windows/chocolatey/files-fm-sync.$version.nupkg"
+          choco push $nupkg --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+
+  publish-ppa:
+    name: Publish PPA (${{ matrix.series }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        series: [resolute, noble, jammy]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends devscripts debhelper dput gnupg
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.PPA_GPG_PRIVATE_KEY }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          {
+            echo "allow-loopback-pinentry"
+          } >> "$HOME/.gnupg/gpg-agent.conf"
+          echo "pinentry-mode loopback" >> "$HOME/.gnupg/gpg.conf"
+          gpgconf --kill gpg-agent
+
+      - name: Assemble debian/ source packaging
+        env:
+          VERSION_TAG: ${{ inputs.tag }}
+          SERIES: ${{ matrix.series }}
+        run: |
+          version="${VERSION_TAG#v}"
+          # "3.0 (native)" source format rejects a hyphen in the version
+          # (that would imply a separate upstream/debian revision), so the
+          # per-series suffix is tilde-only.
+          pkg_version="${version}~${SERIES}1"
+
+          cp -r resource/debian/ppa debian
+          chmod +x debian/rules
+
+          DEBEMAIL="artjoms@failiem.lv" DEBFULLNAME="Artyom Fedosov" \
+            dch --create --package files-fm-sync --newversion "$pkg_version" \
+                --distribution "$SERIES" --urgency medium "Release ${version}."
+
+      - name: Build source package
+        run: dpkg-buildpackage -S -us -uc -d
+
+      - name: Sign source package
+        env:
+          GPG_KEY_ID: ${{ secrets.PPA_GPG_KEY_ID }}
+          GPG_PASSPHRASE: ${{ secrets.PPA_GPG_PASSPHRASE }}
+        run: |
+          changes_file=$(ls -- ../files-fm-sync_*_source.changes)
+          debsign -k"$GPG_KEY_ID" \
+            -p"gpg --batch --pinentry-mode loopback --passphrase $GPG_PASSPHRASE" \
+            "$changes_file"
+
+      - name: Upload to Launchpad PPA
+        run: dput ppa:filesfm/sync ../files-fm-sync_*_source.changes
+
+  publish-copr:
+    name: Publish Copr
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:41
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag }}
+
+      - name: Install packaging tools
+        run: dnf install -y --setopt=install_weak_deps=False rpm-build copr-cli
+
+      - name: Configure copr-cli credentials
+        env:
+          COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+        run: |
+          mkdir -p "$HOME/.config"
+          printf '%s' "$COPR_CONFIG" > "$HOME/.config/copr"
+          chmod 600 "$HOME/.config/copr"
+
+      - name: Build source RPM
+        env:
+          VERSION_TAG: ${{ inputs.tag }}
+        run: |
+          version="${VERSION_TAG#v}"
+          sed -i "s/^Version:.*/Version:        ${version}/" resource/fedora/files_fm_sync.spec
+
+          mkdir -p rpmbuild/SOURCES rpmbuild/SPECS
+          tar -czf "rpmbuild/SOURCES/v${version}.tar.gz" \
+            --exclude-vcs --exclude=./rpmbuild \
+            --transform "s|^\./|Sync-${version}/|" \
+            .
+          cp resource/fedora/files_fm_sync.spec rpmbuild/SPECS/files_fm_sync.spec
+
+          rpmbuild --define "_topdir $PWD/rpmbuild" -bs rpmbuild/SPECS/files_fm_sync.spec
+
+      - name: Submit build to Copr
+        run: copr-cli build filesfm/Sync rpmbuild/SRPMS/*.src.rpm
+
+  publish-homebrew:
+    name: Publish Homebrew cask
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS DMGs from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p dist
+          gh release download "${{ inputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --pattern '*.dmg' \
+            --dir dist
+
+          count=$(find dist -maxdepth 1 -name '*.dmg' | wc -l)
+          if [ "$count" -ne 2 ]; then
+            echo "::error::Expected exactly 2 .dmg assets (arm64, x86_64) on release ${{ inputs.tag }}, found $count"
+            exit 1
+          fi
+
+      - name: Checkout tap
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: filesfm/homebrew-macos
+          path: homebrew-macos
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Update cask version and checksums
+        env:
+          VERSION_TAG: ${{ inputs.tag }}
+        run: |
+          version="${VERSION_TAG#v}"
+          arm_dmg=$(find dist -maxdepth 1 -name '*arm64*.dmg')
+          intel_dmg=$(find dist -maxdepth 1 -name '*x86_64*.dmg')
+          arm_sha=$(sha256sum "$arm_dmg" | cut -d' ' -f1)
+          intel_sha=$(sha256sum "$intel_dmg" | cut -d' ' -f1)
+
+          cask=homebrew-macos/Casks/files-fm-sync.rb
+          sed -i -E \
+            -e "s/^(  version )\"[^\"]*\"/\1\"${version}\"/" \
+            -e "s/^(\s*sha256\s+arm:\s*)\"[^\"]*\"/\1\"${arm_sha}\"/" \
+            -e "s/^(\s*intel:\s*)\"[^\"]*\"/\1\"${intel_sha}\"/" \
+            "$cask"
+
+          grep -qF "version \"${version}\"" "$cask"
+          grep -qF "\"${arm_sha}\"" "$cask"
+          grep -qF "\"${intel_sha}\"" "$cask"
+
+      - name: Push to tap
+        env:
+          VERSION_TAG: ${{ inputs.tag }}
+        run: |
+          cd homebrew-macos
+          git config user.name "artyom-fedosov"
+          git config user.email "artjoms@failiem.lv"
+          git add Casks/files-fm-sync.rb
+
+          if git diff --cached --quiet; then
+            echo "No changes to publish"
+            exit 0
+          fi
+
+          git commit -m "chore: bump files-fm-sync to ${VERSION_TAG}"
+          git push origin HEAD

@@ -1,0 +1,22 @@
+Source: files-fm-sync
+Section: net
+Priority: optional
+Maintainer: Artyom Fedosov <artjoms@failiem.lv>
+Build-Depends: debhelper-compat (= 13), cmake, ninja-build, g++, pkg-config,
+ qt6-base-dev, qt6-declarative-dev, qt6-5compat-dev, qt6-websockets-dev,
+ qt6-shadertools-dev, qt6-webengine-dev, qt6-webchannel-dev, qt6-positioning-dev,
+ libssl-dev, libsqlite3-dev, libp11-dev,
+ libx11-dev, libxkbcommon-dev, libxkbcommon-x11-dev, libxcb-cursor-dev,
+ libglib2.0-dev, libdbus-1-dev, libcloudproviders-dev,
+ zlib1g-dev, libbz2-dev, liblzma-dev, libzstd-dev, librsvg2-bin,
+ libkf6archive-dev, qt6keychain-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/filesfm/Sync
+Rules-Requires-Root: no
+
+Package: files-fm-sync
+Architecture: amd64
+Depends: ${shlibs:Depends}, ${misc:Depends}, hicolor-icon-theme
+Description: Files.fm Sync desktop client
+ Files.fm Sync keeps a local folder synchronized with your Files.fm
+ storage, built on the Nextcloud desktop sync engine.

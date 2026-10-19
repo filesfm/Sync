@@ -1,0 +1,18 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --buildsystem=cmake+ninja
+
+override_dh_auto_configure:
+	dh_auto_configure -- -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DBUILD_UPDATER=OFF
+
+override_dh_auto_install:
+	dh_auto_install
+	# The desktop file and hicolor icons are already installed by CMake's
+	# own install() rules (see src/gui/CMakeLists.txt); only the AppStream
+	# metainfo file still needs staging by hand.
+	install -Dm644 com.files.fm.sync.metainfo.xml \
+		debian/files-fm-sync/usr/share/metainfo/com.files.fm.sync.metainfo.xml
+
+override_dh_auto_test:
+	# No packaged test suite (BUILD_TESTING=OFF); nothing to run here.

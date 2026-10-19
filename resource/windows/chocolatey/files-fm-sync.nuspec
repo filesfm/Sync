@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>files-fm-sync</id>
+    <version>3.16.7</version>
+    <packageSourceUrl>https://github.com/filesfm/Sync</packageSourceUrl>
+    <owners>filesfm</owners>
+    <title>Files.fm Sync</title>
+    <authors>filesfm</authors>
+    <projectUrl>https://github.com/filesfm/Sync</projectUrl>
+    <iconUrl>https://cdn.jsdelivr.net/gh/filesfm/Sync@main/theme/colored/files_fm_sync-icon.svg</iconUrl>
+    <copyright>2025 Files.fm SIA</copyright>
+    <licenseUrl>https://github.com/filesfm/Sync/blob/main/COPYING</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/filesfm/Sync</projectSourceUrl>
+    <docsUrl>https://github.com/filesfm/Sync/blob/main/README.md</docsUrl>
+    <bugTrackerUrl>https://github.com/filesfm/Sync/issues</bugTrackerUrl>
+    <tags>files-fm sync file-sync webdav desktop qt</tags>
+    <summary>Files.fm Sync desktop client</summary>
+    <description>Files.fm Sync keeps a local folder synchronized with your Files.fm storage, built on the Nextcloud desktop sync engine.</description>
+  </metadata>
+  <files>
+    <file src="chocolateyinstall.ps1" target="tools" />
+    <file src="chocolateyuninstall.ps1" target="tools" />
+  </files>
+</package>
