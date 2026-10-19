@@ -261,18 +261,7 @@ jobs:
 
   macos:
     name: macOS
-    strategy:
-      matrix:
-        include:
-          # x86_64 uses an Intel runner rather than cross-compiling: the
-          # Homebrew deps below (openssl@3, libp11, sqlite3, librsvg) are
-          # installed as native bottles for the runner's own arch, and
-          # there's no single-arch Homebrew prefix that holds both.
-          - arch: arm64
-            runner: macos-14
-          - arch: x86_64
-            runner: macos-13
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     env:
       # Developer ID identities for direct-download distribution (not the
       # Mac App Store identities a submission there would require).
@@ -381,7 +370,7 @@ jobs:
             -DBUILD_TESTING=OFF \
             -DBUILD_OWNCLOUD_OSX_BUNDLE=ON \
             -DBUILD_FILE_PROVIDER_MODULE=0 \
-            -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DSOCKETAPI_TEAM_IDENTIFIER_PREFIX="$TEAM_IDENTIFIER_PREFIX" \
             -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
             -DMIRALL_VERSION_SUFFIX=""
@@ -407,7 +396,7 @@ jobs:
         env:
           VERSION: ${{ github.ref_name }}
         run: |
-          DMG_FILE="$INSTALL_PREFIX/files_fm_sync-${VERSION#v}-${{ matrix.arch }}.dmg"
+          DMG_FILE="$INSTALL_PREFIX/files_fm_sync-${VERSION#v}.dmg"
           hdiutil create -volname "Files.fm Sync" \
             -srcfolder "$INSTALL_PREFIX/Files.fm Sync 2025.app" \
             -ov -format UDZO "$DMG_FILE"
@@ -421,11 +410,9 @@ jobs:
           "$BUILD_DIR/admin/osx/create_mac.sh" "$INSTALL_PREFIX" "$BUILD_DIR" "$PKG_SIGN_IDENTITY"
 
           # create_mac.sh names the pkg after APPLICATION_SHORTNAME/Qt/Mirall
-          # version only -- no arch -- so both matrix legs would otherwise
-          # produce an identically-named file, colliding once the release
-          # job merges every job's artifacts into one directory.
+          # version, renamed here to match the dmg's naming convention.
           PKG_FILE="$(find "$INSTALL_PREFIX" -maxdepth 1 -name '*.pkg')"
-          mv "$PKG_FILE" "$INSTALL_PREFIX/files_fm_sync-${VERSION#v}-${{ matrix.arch }}.pkg"
+          mv "$PKG_FILE" "$INSTALL_PREFIX/files_fm_sync-${VERSION#v}.pkg"
 
       # Gatekeeper blocks a Developer ID-signed pkg/dmg the first time it's
       # opened after being downloaded (the quarantine flag Safari/Chrome/etc
@@ -473,7 +460,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: macos-${{ matrix.arch }}
+          name: macos
           path: |
             ${{ runner.temp }}/mac-install/*.pkg
             ${{ runner.temp }}/mac-install/*.dmg

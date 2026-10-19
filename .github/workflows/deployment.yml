@@ -189,7 +189,7 @@ jobs:
     name: Publish Homebrew cask
     runs-on: ubuntu-latest
     steps:
-      - name: Download macOS DMGs from GitHub Release
+      - name: Download macOS DMG from GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -200,8 +200,8 @@ jobs:
             --dir dist
 
           count=$(find dist -maxdepth 1 -name '*.dmg' | wc -l)
-          if [ "$count" -ne 2 ]; then
-            echo "::error::Expected exactly 2 .dmg assets (arm64, x86_64) on release ${{ inputs.tag }}, found $count"
+          if [ "$count" -ne 1 ]; then
+            echo "::error::Expected exactly 1 .dmg asset on release ${{ inputs.tag }}, found $count"
             exit 1
           fi
 
@@ -217,21 +217,17 @@ jobs:
           VERSION_TAG: ${{ inputs.tag }}
         run: |
           version="${VERSION_TAG#v}"
-          arm_dmg=$(find dist -maxdepth 1 -name '*arm64*.dmg')
-          intel_dmg=$(find dist -maxdepth 1 -name '*x86_64*.dmg')
-          arm_sha=$(sha256sum "$arm_dmg" | cut -d' ' -f1)
-          intel_sha=$(sha256sum "$intel_dmg" | cut -d' ' -f1)
+          dmg=$(find dist -maxdepth 1 -name '*.dmg')
+          sha=$(sha256sum "$dmg" | cut -d' ' -f1)
 
           cask=homebrew-macos/Casks/files-fm-sync.rb
           sed -i -E \
             -e "s/^(  version )\"[^\"]*\"/\1\"${version}\"/" \
-            -e "s/^(\s*sha256\s+arm:\s*)\"[^\"]*\"/\1\"${arm_sha}\"/" \
-            -e "s/^(\s*intel:\s*)\"[^\"]*\"/\1\"${intel_sha}\"/" \
+            -e "s/^(  sha256 )\"[^\"]*\"/\1\"${sha}\"/" \
             "$cask"
 
           grep -qF "version \"${version}\"" "$cask"
-          grep -qF "\"${arm_sha}\"" "$cask"
-          grep -qF "\"${intel_sha}\"" "$cask"
+          grep -qF "\"${sha}\"" "$cask"
 
       - name: Push to tap
         env:
