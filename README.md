@@ -21,7 +21,6 @@ Files.fm Sync is a desktop client that keeps local folders continuously synchron
 ## Contents
 
 - [Supported Operating Systems](#supported-operating-systems)
-- [Supported Desktop Environments](#supported-desktop-environments-on-linux)
 - [Installing](#installing)
 - [Updating](#updating)
 - [Removing](#removing)
@@ -33,12 +32,6 @@ Files.fm Sync is a desktop client that keeps local folders continuously synchron
 - macOS
 - Windows
 - Linux
-
-## Supported desktop environments on Linux
-
-- GNOME (Nautilus)
-- Cinnamon (Nemo)
-- MATE (Caja)
 
 ---
 
