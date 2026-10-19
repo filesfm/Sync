@@ -5,4 +5,28 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/install-qt"
+    schedule:
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/import-apple-certificate"
+    schedule:
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: "github-actions"
+    directory: "/.github/actions/download-release-asset"
+    schedule:
+      interval: "daily"
+    groups:
+      github-actions:
+        patterns: ["*"]

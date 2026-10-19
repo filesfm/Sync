@@ -1,0 +1,22 @@
+name: Install Qt
+description: Install Qt 6 with the modules Files.fm Sync needs, with dependency caching
+
+inputs:
+  version:
+    description: Qt version to install, e.g. 6.9.0
+    required: true
+  arch:
+    description: Qt arch identifier, e.g. linux_gcc_64 (omit to let install-qt-action pick the host default)
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Qt
+      uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4
+      with:
+        version: ${{ inputs.version }}
+        arch: ${{ inputs.arch }}
+        modules: 'qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning'
+        cache: true
