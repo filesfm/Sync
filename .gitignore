@@ -12,6 +12,8 @@ admin/win/nsi/l10n/pofiles/*.po
 *.swo
 *~$
 build*
+__pycache__/
+*.pyc
 cscope.*
 tags
 t1.cfg
