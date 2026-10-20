@@ -227,9 +227,9 @@ jobs:
           mkdir -p "$APPDIR/usr/share/caja-python"
           mkdir -p "$APPDIR/usr/share/nemo-python"
           mkdir -p "$APPDIR/usr/share/nautilus-python"
-          cp "$STAGING/usr/local/share/caja-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/caja-python"
-          cp "$STAGING/usr/local/share/nemo-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/nemo-python"
-          cp "$STAGING/usr/local/share/nautilus-python/extensions/syncstate-Files.fm Sync 2025.py" "$APPDIR/usr/share/nautilus-python"
+          cp "$STAGING/usr/local/share/caja-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/caja-python"
+          cp "$STAGING/usr/local/share/nemo-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/nemo-python"
+          cp "$STAGING/usr/local/share/nautilus-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/nautilus-python"
 
           echo "${VERSION#v}" > "$APPDIR/usr/version"
 
@@ -457,7 +457,7 @@ jobs:
 
       - name: Sign app bundle
         run: |
-          ./admin/osx/sign_app.sh "$INSTALL_PREFIX/Files.fm Sync 2025.app" \
+          ./admin/osx/sign_app.sh "$INSTALL_PREFIX/Files.fm Sync 2027.app" \
             "$APP_SIGN_IDENTITY" "${TEAM_IDENTIFIER_PREFIX%.}"
 
       - name: Build disk image
@@ -466,7 +466,7 @@ jobs:
         run: |
           DMG_FILE="$INSTALL_PREFIX/files_fm_sync-${VERSION#v}.dmg"
           hdiutil create -volname "Files.fm Sync" \
-            -srcfolder "$INSTALL_PREFIX/Files.fm Sync 2025.app" \
+            -srcfolder "$INSTALL_PREFIX/Files.fm Sync 2027.app" \
             -ov -format UDZO "$DMG_FILE"
           codesign --force --sign "$APP_SIGN_IDENTITY" --timestamp "$DMG_FILE"
 

@@ -30,7 +30,7 @@ from gi.repository import GObject, Nautilus
 
 # Note: setappname.sh will search and replace 'Nextcloud' on this file to update this line and other
 # occurrences of the name
-appname = 'Files.fm Sync 2025'
+appname = 'Files.fm Sync 2027'
 
 print("Initializing "+appname+"-client-nautilus extension")
 print("Using python version {}".format(sys.version_info))

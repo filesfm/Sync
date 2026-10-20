@@ -37,6 +37,6 @@ is_installed() {
 
 app_path() {
   local exe
-  exe=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "/Applications/Files.fm Sync 2025.app/Contents/Info.plist")
-  echo "/Applications/Files.fm Sync 2025.app/Contents/MacOS/$exe"
+  exe=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "/Applications/Files.fm Sync 2027.app/Contents/Info.plist")
+  echo "/Applications/Files.fm Sync 2027.app/Contents/MacOS/$exe"
 }

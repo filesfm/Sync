@@ -8,7 +8,7 @@
                   Return="check"
                   Execute="immediate"
                   Impersonate="yes"
-                  Value="&quot;[SystemFolder]cmd.exe&quot; /C &quot;[SystemFolder]SCHTASKS.EXE /CREATE /SC ONLOGON /TN &quot;Files.fm Sync 2025 – Run as Admin&quot; /TR &quot;&apos;[INSTALLDIR]$(var.AppExe)&apos;&quot; /RL HIGHEST /F /IT /RU %USERNAME%&quot;" />
+                  Value="&quot;[SystemFolder]cmd.exe&quot; /C &quot;[SystemFolder]SCHTASKS.EXE /CREATE /SC ONLOGON /TN &quot;Files.fm Sync 2027 – Run as Admin&quot; /TR &quot;&apos;[INSTALLDIR]$(var.AppExe)&apos;&quot; /RL HIGHEST /F /IT /RU %USERNAME%&quot;" />
 
     <CustomAction Id="CreateScheduledTask"
         Return="check"

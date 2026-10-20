@@ -3,7 +3,7 @@ name: files-fm-sync
 version: '3.16.7'
 summary: Keep your files synchronized with Files.fm
 description: |
-  Files.fm Sync 2025 is a desktop client that keeps local folders
+  Files.fm Sync 2027 is a desktop client that keeps local folders
   continuously synchronized with your Files.fm account. It is based on the
   Nextcloud desktop synchronization client.
 icon: theme/colored/files_fm_sync-icon.svg

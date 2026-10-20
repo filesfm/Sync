@@ -30,7 +30,7 @@ is_installed() {
 }
 
 app_path() {
-  # The WiX MSI installs to $PROGRAMFILES64\Files.fm Sync 2025 (admin/win/msi/Nextcloud.wxs).
+  # The WiX MSI installs to $PROGRAMFILES64\Files.fm Sync 2027 (admin/win/msi/Nextcloud.wxs).
   # shellcheck disable=SC2154 # PROGRAMFILES is set by the Windows runner
-  echo "$(cygpath -u "$PROGRAMFILES")/Files.fm Sync 2025/files_fm_sync.exe"
+  echo "$(cygpath -u "$PROGRAMFILES")/Files.fm Sync 2027/files_fm_sync.exe"
 }

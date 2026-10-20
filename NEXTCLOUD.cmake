@@ -1,13 +1,13 @@
 # keep the application name and short name the same or different for dev and prod build
 # or some migration logic will behave differently for each build
 if(NEXTCLOUD_DEV)
-    set( APPLICATION_NAME       "Files.fm Sync 2025 Dev" )
-    set( APPLICATION_SHORTNAME  "Files.fm Sync 2025 Dev" )
+    set( APPLICATION_NAME       "Files.fm Sync 2027 Dev" )
+    set( APPLICATION_SHORTNAME  "Files.fm Sync 2027 Dev" )
     set( APPLICATION_EXECUTABLE "files_fm_sync" )
     set( APPLICATION_ICON_NAME  "files_fm_sync" )
 else()
-    set( APPLICATION_NAME       "Files.fm Sync 2025" )
-    set( APPLICATION_SHORTNAME  "Files.fm Sync 2025" )
+    set( APPLICATION_NAME       "Files.fm Sync 2027" )
+    set( APPLICATION_SHORTNAME  "Files.fm Sync 2027" )
     set( APPLICATION_EXECUTABLE "files_fm_sync" )
     set( APPLICATION_ICON_NAME  "files_fm_sync" )
 endif()

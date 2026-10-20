@@ -45,22 +45,22 @@ fi
 cleanup() {
 	rm ~/.local/share/applications/filesfm.desktop
 	rm ~/.local/share/mime/packages/x-filesfm.xml
-	rm ~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2025.service
+	rm ~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2027.service
 	case "${FILE_MANAGER,,}" in
 		*nautilus*)
-			if rm ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+			if rm ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2027.py; then
 				nautilus -q
 			fi ;;
 		*nemo*)
-			if rm ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+			if rm ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2027.py; then
 				nemo --quit
 			fi ;;
 		*caja*)
-			if rm ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2025.py; then
+			if rm ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2027.py; then
 				caja -q
 			fi ;;
 	esac
-	for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2025/files_fm_sync.cfg); do
+	for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2027/files_fm_sync.cfg); do
 		DIRECTORY=$(echo "$config_entry" | cut -d '=' -f 2)
 		gio set -t unset "$DIRECTORY" metadata::custom-icon
 	done
@@ -78,8 +78,8 @@ Icon=${BIN_DIR}/files_fm_sync.png
 MimeType=application/x-filesfm;
 Implements=org.freedesktop.CloudProviders
 [org.freedesktop.CloudProviders]
-BusName=com.filesfmsia.FilesfmSync2025
-ObjectPath=/com/filesfmsia/FilesfmSync2025" >~/.local/share/applications/filesfm.desktop
+BusName=com.filesfmsia.FilesfmSync2027
+ObjectPath=/com/filesfmsia/FilesfmSync2027" >~/.local/share/applications/filesfm.desktop
 
 mkdir -p ~/.local/share/mime/packages
 echo '<?xml version="1.0" encoding="UTF-8"?>
@@ -94,37 +94,37 @@ xdg-mime default filesfm.desktop application/x-filesfm
 
 mkdir -p ~/.local/share/dbus-1/services
 echo "[D-BUS Service]
-Name=com.filesfmsia.FilesfmSync2025
-Exec=${BIN_DIR}/files_fm_sync --background" >~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2025.service
+Name=com.filesfmsia.FilesfmSync2027
+Exec=${BIN_DIR}/files_fm_sync --background" >~/.local/share/dbus-1/services/com.filesfmsia.FilesfmSync2027.service
 
 TMP=$(mktemp)
 FILE_MANAGER=$(xdg-mime query default inode/directory)
 case "${FILE_MANAGER,,}" in
 	*nautilus*)
-		cp "${USR_DIR}/share/nautilus-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		cp "${USR_DIR}/share/nautilus-python/syncstate-Files.fm Sync 2027.py" "$TMP"
 		mkdir -p ~/.local/share/nautilus-python/extensions
-		cp "$TMP" ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py
-		chmod 644 ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2025.py
+		cp "$TMP" ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2027.py
+		chmod 644 ~/.local/share/nautilus-python/extensions/syncstate-Files_fm_Sync_2027.py
 		if pgrep nautilus >/dev/null 2>&1; then
 			nautilus -q
 		fi ;;
 	*nemo*)
-		cp "${USR_DIR}/share/nemo-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		cp "${USR_DIR}/share/nemo-python/syncstate-Files.fm Sync 2027.py" "$TMP"
 		mkdir -p ~/.local/share/nemo-python/extensions
-		cp "$TMP" ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
-		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
+		cp "$TMP" ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2027.py
+		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2027.py
 		nemo --quit ;;
 	*caja*)
-		cp "${USR_DIR}/share/caja-python/syncstate-Files.fm Sync 2025.py" "$TMP"
+		cp "${USR_DIR}/share/caja-python/syncstate-Files.fm Sync 2027.py" "$TMP"
 		mkdir -p ~/.local/share/caja-python/extensions
-		cp "$TMP" ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2025.py
-		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2025.py
+		cp "$TMP" ~/.local/share/caja-python/extensions/syncstate-Files_fm_Sync_2027.py
+		chmod 644 ~/.local/share/nemo-python/extensions/syncstate-Files_fm_Sync_2027.py
 		caja -q ;;
 esac
 
 ICON_DIR=$(realpath "${BIN_DIR}/../..")
 gio set "$APPIMAGE" metadata::custom-icon "file://${ICON_DIR}/files_fm_sync.png"
-for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2025/files_fm_sync.cfg); do
+for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2027/files_fm_sync.cfg); do
 	DIRECTORY=$(echo "$config_entry" | cut -d '=' -f 2)
 	gio set "$DIRECTORY" metadata::custom-icon "file://${ICON_DIR}/files_fm_sync.png"
 done

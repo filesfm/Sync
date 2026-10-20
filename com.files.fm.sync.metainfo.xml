@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
   <id>com.files.fm.sync</id>
-  <name>Files.fm Sync 2025</name>
+  <name>Files.fm Sync 2027</name>
   <summary>Keep your files synchronized with Files.fm</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-or-later</project_license>
@@ -10,7 +10,7 @@
   </developer>
   <description>
     <p>
-      Files.fm Sync 2025 is a desktop client that keeps local folders continuously
+      Files.fm Sync 2027 is a desktop client that keeps local folders continuously
       synchronized with your Files.fm account. It is based on the Nextcloud desktop
       synchronization client.
     </p>
