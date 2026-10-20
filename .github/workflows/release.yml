@@ -12,60 +12,91 @@ permissions:
 jobs:
   appimage:
     name: AppImage
-    if: false
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container:
+      image: rockylinux/rockylinux:8
+    env:
+      QT_ROOT_DIR: /opt/qt/6.8.3/gcc_64
+      # libp11 (autotools, installs to lib/) and libcloudproviders (meson,
+      # installs to lib64/ on this distro) are both built from source below
+      # since neither is packaged for Rocky 8/EPEL/CRB -- this makes their
+      # .pc files discoverable by pkg_check_modules in the project's own
+      # CMake configure step further down.
+      PKG_CONFIG_PATH: /usr/local/lib/pkgconfig:/usr/local/lib64/pkgconfig
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 1
 
-      - name: Install Ninja
-        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
-
       - name: Install Linux build/runtime dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential patchelf fuse libfuse2 \
-            libssl-dev libsqlite3-dev libp11-dev \
-            libgl1-mesa-dev libxkbcommon0 libxkbcommon-x11-0 libx11-dev libxcb-cursor0 \
-            libglib2.0-dev libdbus-1-dev libcloudproviders-dev \
-            zlib1g-dev libbz2-dev liblzma-dev libzstd-dev \
-            librsvg2-bin
+          dnf install -y epel-release
+          /usr/bin/crb enable
+          dnf install -y \
+            git tar which file findutils patchelf fuse-libs \
+            python3.11 python3.11-pip gcc-toolset-13 meson \
+            autoconf automake libtool pkgconf-pkg-config \
+            openssl-devel sqlite-devel libsecret-devel \
+            alsa-lib-devel nss libatomic \
+            mesa-libGL-devel libxkbcommon libxkbcommon-x11 libX11-devel libxkbfile-devel \
+            xcb-util-cursor xcb-util xcb-util-image xcb-util-keysyms xcb-util-renderutil xcb-util-wm \
+            glib2-devel dbus-devel \
+            zlib-devel bzip2-devel xz-devel libzstd-devel \
+            librsvg2-tools
 
-      - name: Install Qt
-        uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
-        with:
-          version: '6.9.0'
-          arch: linux_gcc_64
-          modules: 'qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning'
-          cache: true
+      # Rocky 8's default GCC (8.x) doesn't have the C++ ABI Qt 6.8's
+      # official builds expect. gcc-toolset-13 gives a modern compiler
+      # while every produced binary still links against Rocky 8's own
+      # (old, portable) GLIBC -- that's the whole point of building on
+      # Rocky 8 instead of a newer distro.
+      - name: Add gcc-toolset-13 to PATH
+        run: echo "/opt/rh/gcc-toolset-13/root/usr/bin" >> "$GITHUB_PATH"
 
-      # Ubuntu 22.04 predates KDE Frameworks 6, so KF6Archive
+      # Rocky 8's packaged cmake (3.26) is too old for current KDE Frameworks
+      # (extra-cmake-modules requires 3.30+); pulling a current cmake/ninja
+      # from PyPI instead of dnf avoids that mismatch entirely. Rocky 8's
+      # system Python (3.6) is also too old for current aqtinstall, hence
+      # python3.11 above.
+      - name: Install cmake, ninja and aqtinstall via pip
+        run: python3.11 -m pip install cmake ninja aqtinstall
+
+      - name: Install Qt via aqtinstall
+        run: |
+          python3.11 -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 \
+            -m qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning \
+            -O /opt/qt
+          echo "$QT_ROOT_DIR/bin" >> "$GITHUB_PATH"
+
+      # Rocky 8 predates KDE Frameworks 6, so KF6Archive
       # (required by src/libsync/CMakeLists.txt) and its build-time
-      # dependency extra-cmake-modules aren't packaged for jammy.
+      # dependency extra-cmake-modules aren't packaged for it.
       - name: Build and install extra-cmake-modules
         run: |
           git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
           cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build "$RUNNER_TEMP/ecm-build"
-          sudo cmake --install "$RUNNER_TEMP/ecm-build"
+          cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/ecm-build"
 
       - name: Build and install KF6Archive
         run: |
-          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          # Pinned to the newest tag whose REQUIRED_QT_VERSION (6.8.0) our
+          # Qt 6.8.3 still satisfies -- tracking the default branch instead
+          # breaks here once KArchive bumps past Qt 6.8.x (as of this
+          # writing HEAD already requires 6.10.0).
+          git clone --branch v6.24.0 --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
           cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_WITH_QT6=ON \
             -DBUILD_TESTING=OFF \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build "$RUNNER_TEMP/karchive-build"
-          sudo cmake --install "$RUNNER_TEMP/karchive-build"
+          cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/karchive-build"
 
-      # Ubuntu 22.04 doesn't ship a Qt6 build of qtkeychain, which
+      # Rocky 8 doesn't ship a Qt6 build of qtkeychain, which
       # src/CMakeLists.txt requires unless TOKEN_AUTH_ONLY is set.
       - name: Build and install qtkeychain
         run: |
@@ -73,22 +104,51 @@ jobs:
           cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_WITH_QT6=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DCMAKE_INSTALL_PREFIX=/usr/local
-          cmake --build "$RUNNER_TEMP/qtkeychain-build"
-          sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/qtkeychain-build"
 
-      # Refresh the dynamic linker cache so libKF6Archive.so.6 and
-      # libqt6keychain.so (installed to /usr/local/lib above) are
-      # resolvable when linuxdeploy scans the built executable's
-      # shared-library dependencies later in this job.
+      # Rocky 8/EPEL/CRB doesn't package libp11 (CMakeLists.txt:237,
+      # pkg_check_modules(OPENSC-LIBP11 libp11 REQUIRED)) at all.
+      - name: Build and install libp11
+        run: |
+          git clone --depth 1 https://github.com/OpenSC/libp11.git "$RUNNER_TEMP/libp11"
+          cd "$RUNNER_TEMP/libp11"
+          ./bootstrap
+          ./configure --prefix=/usr/local
+          make -j"$(nproc)"
+          make install
+
+      # Rocky 8/EPEL doesn't package libcloudproviders either, but the
+      # project's CMake treats it as optional (pkg_check_modules without
+      # REQUIRED at CMakeLists.txt:247) -- build it so the AppImage keeps
+      # the same CloudProviders desktop integration as before. Pinned to
+      # 0.3.6, the last release whose glib requirement (>=2.56) Rocky 8's
+      # packaged glib2-devel (2.56.4) satisfies -- every later release
+      # (including the main branch) requires glib >=2.64.
+      - name: Build and install libcloudproviders
+        run: |
+          git clone --branch 0.3.6 --depth 1 https://gitlab.gnome.org/GNOME/libcloudproviders.git "$RUNNER_TEMP/libcloudproviders"
+          meson setup "$RUNNER_TEMP/libcloudproviders-build" "$RUNNER_TEMP/libcloudproviders" \
+            --prefix=/usr/local \
+            -Dintrospection=false \
+            -Dvapigen=false
+          ninja -C "$RUNNER_TEMP/libcloudproviders-build" install
+
+      # Refresh the dynamic linker cache so libKF6Archive.so.6,
+      # libqt6keychain.so and libcloudproviders.so (installed to
+      # /usr/local/lib above) are resolvable when linuxdeploy scans the
+      # built executable's shared-library dependencies later in this job.
       - name: Refresh dynamic linker cache
-        run: sudo ldconfig
+        run: ldconfig
 
       - name: Configure, compile and install
         env:
           VERSION: ${{ github.ref_name }}
         run: |
           cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_TESTING=OFF \
@@ -116,12 +176,16 @@ jobs:
 
           # appimagetool's strict desktop-file validation rejects custom
           # groups not prefixed "X-" (freedesktop desktop-entry spec).
-          # Same workaround as admin/linux/build-appimage.sh.
           sed -i -e 's/\[org.freedesktop.CloudProviders\]/[X-org.freedesktop.CloudProviders]/' \
                  -e 's/Implements=org.freedesktop.CloudProviders/Implements=X-org.freedesktop.CloudProviders/' \
                  "$DESKTOP_FILE"
 
-          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib" \
+          # /usr/local/lib64 is where ECM/KArchive/qtkeychain/libp11/
+          # libcloudproviders landed above (Rocky 8, like other RHEL-likes,
+          # defaults cmake/autotools/meson installs on 64-bit to lib64, not
+          # lib) -- linuxdeploy resolves dependencies via LD_LIBRARY_PATH,
+          # not the system ldconfig cache, so it has to be listed here too.
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:/usr/local/lib64:/usr/local/lib:$QT_ROOT_DIR/lib" \
             "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
             --appdir="$APPDIR" \
             --executable="$STAGING/usr/local/bin/files_fm_sync" \
@@ -130,9 +194,12 @@ jobs:
 
           QMAKE="$QT_ROOT_DIR/bin/qmake" \
           QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/gui" \
-          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$QT_ROOT_DIR/lib:$QT_ROOT_DIR/plugins/sqldrivers" \
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:/usr/local/lib64:/usr/local/lib:$QT_ROOT_DIR/lib:$QT_ROOT_DIR/plugins/sqldrivers" \
             "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" --appdir="$APPDIR" \
             --exclude-library="libqsqlmimer.so" \
+            --exclude-library="libqsqlpsql.so" \
+            --exclude-library="libqsqlodbc.so" \
+            --exclude-library="libqsqlmysql.so" \
             --exclude-library="libqtposition_nmea.so"
 
       - name: Assemble AppDir
@@ -781,7 +848,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [flatpak, snap, macos]
+    needs: [appimage, flatpak, snap, macos]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
