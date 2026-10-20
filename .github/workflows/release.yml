@@ -272,6 +272,8 @@ jobs:
       # recurring timeout issues unrelated to this manifest. See:
       # https://github.com/flathub/flathub/issues/4993
       - name: Build Flatpak bundle
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           for attempt in 1 2 3; do
             echo "flatpak-builder attempt $attempt/3"
@@ -297,7 +299,7 @@ jobs:
             sleep 30
           done
 
-          flatpak build-bundle repo files_fm_sync.flatpak \
+          flatpak build-bundle repo "files_fm_sync-${VERSION#v}.flatpak" \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
             --arch=x86_64 \
             com.files.fm.sync master
@@ -306,7 +308,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: flatpak
-          path: files_fm_sync.flatpak
+          path: files_fm_sync-*.flatpak
           if-no-files-found: error
 
   snap:
@@ -887,13 +889,21 @@ jobs:
           Pop-Location
           if ($exitCode -ne 0) { exit $exitCode }
 
+      # WiX names the .msi after APPLICATION_SHORTNAME and the internal
+      # build-numbered version (e.g. "Files.fm Sync 2027-3.16.7.142-x64.msi")
+      # -- renamed here to match every other release asset's
+      # files_fm_sync-<tag> naming convention. No arch suffix: this
+      # workflow only ever produces one Windows build.
       - name: Locate installer
         shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
         run: |
           mkdir dist | Out-Null
           $installer = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\install\msi" -Filter "*.msi" | Select-Object -First 1
           if (-not $installer) { Write-Error "Could not locate a packaged .msi under install\msi"; exit 1 }
-          Copy-Item $installer.FullName -Destination dist\
+          $version = $env:VERSION -replace '^v',''
+          Copy-Item $installer.FullName -Destination "dist\files_fm_sync-$version.msi"
 
       # Signs the MSI package itself -- separate from signing the exe
       # inside it above, since Windows checks the installer package's
@@ -939,10 +949,10 @@ jobs:
           VERSION: ${{ github.ref_name }}
         run: |
           $version = $env:VERSION -replace '^v',''
-          $packageDir = "files_fm_sync-$version-x64"
+          $packageDir = "files_fm_sync-$version"
           Copy-Item "$env:GITHUB_WORKSPACE\install\bin" "$env:GITHUB_WORKSPACE\$packageDir" -Recurse
           Copy-Item "$env:GITHUB_WORKSPACE\COPYING" "$env:GITHUB_WORKSPACE\$packageDir\"
-          7z a -tzip "dist\files_fm_sync-$version-x64.zip" "$env:GITHUB_WORKSPACE\$packageDir"
+          7z a -tzip "dist\files_fm_sync-$version.zip" "$env:GITHUB_WORKSPACE\$packageDir"
 
       - name: Upload artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
