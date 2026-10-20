@@ -183,7 +183,7 @@ jobs:
           rpmbuild --define "_topdir $PWD/rpmbuild" -bs rpmbuild/SPECS/files_fm_sync.spec
 
       - name: Submit build to Copr
-        run: copr-cli build filesfm/Sync rpmbuild/SRPMS/*.src.rpm
+        run: copr-cli build --nowait filesfm/Sync rpmbuild/SRPMS/*.src.rpm
 
   publish-homebrew:
     name: Publish Homebrew cask
