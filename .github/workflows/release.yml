@@ -536,7 +536,6 @@ jobs:
 
   windows:
     name: Windows
-    if: false
     runs-on: windows-2022
     env:
       # Staging prefix for dependencies built from source below (ECM,
@@ -560,6 +559,24 @@ jobs:
 
       - name: Install Ninja
         uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      # SSL.com's own GitHub Action for eSigner (SSLcom/actions-codesigner)
+      # runs as a Docker container action, which GitHub Actions can't run
+      # on Windows runners -- so CodeSignTool (the underlying jsign-based
+      # CLI it wraps) is fetched and run directly instead. windows-2022
+      # ships a JDK (CodeSignTool's only runtime dependency) on PATH
+      # already. Pinned to a specific release rather than a "latest" URL.
+      - name: Install CodeSignTool
+        if: false
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\CodeSignTool.zip"
+          Invoke-WebRequest -Uri 'https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\CodeSignTool"
+
+          $batPath = Get-ChildItem -Path "$env:RUNNER_TEMP\CodeSignTool" -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
+          if (-not $batPath) { Write-Error "CodeSignTool.bat not found after extracting CodeSignTool"; exit 1 }
+          echo "CODESIGNTOOL_DIR=$($batPath.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       # windows-2022 runner images have VS2022 Build Tools but don't put
       # the compiler toolchain (cl/link/nmake/rc/mt and their INCLUDE/LIB
@@ -685,7 +702,7 @@ jobs:
           cmake -S "$env:RUNNER_TEMP\ecm" -B "$env:RUNNER_TEMP\ecm-build" -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
-          cmake --build "$env:RUNNER_TEMP\ecm-build"
+          cmake --build "$env:RUNNER_TEMP\ecm-build" --parallel $env:NUMBER_OF_PROCESSORS
           cmake --install "$env:RUNNER_TEMP\ecm-build"
 
       - name: Build and install KF6Archive
@@ -698,7 +715,7 @@ jobs:
             -DBUILD_TESTING=OFF `
             -DCMAKE_PREFIX_PATH="$env:DEPS_PREFIX;$env:VCPKG_INSTALLED;$env:QT_ROOT_DIR" `
             -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
-          cmake --build "$env:RUNNER_TEMP\karchive-build"
+          cmake --build "$env:RUNNER_TEMP\karchive-build" --parallel $env:NUMBER_OF_PROCESSORS
           cmake --install "$env:RUNNER_TEMP\karchive-build"
 
       - name: Build and install qtkeychain
@@ -710,7 +727,7 @@ jobs:
             -DBUILD_WITH_QT6=ON `
             -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR" `
             -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
-          cmake --build "$env:RUNNER_TEMP\qtkeychain-build"
+          cmake --build "$env:RUNNER_TEMP\qtkeychain-build" --parallel $env:NUMBER_OF_PROCESSORS
           cmake --install "$env:RUNNER_TEMP\qtkeychain-build"
 
       # ecm_add_app_icon (src/gui/CMakeLists.txt, via ECMAddAppIcon.cmake)
@@ -744,6 +761,21 @@ jobs:
       # BUILD_WIN_MSI=ON also pulls in admin/win/tools (NCMsiHelper) and
       # shell_integration/windows, which install their WiX sources/DLL
       # into <install-prefix>\msi\ alongside admin/win/msi's own files.
+      #
+      # ecm_add_app_icon (which generates files_fm_sync.ico) reads
+      # ECM_FIND_MODULE_DIR to locate KDE ECM's own FindIcoTool.cmake
+      # (cmake/modules/ECMAddAppIcon.cmake:203). That variable is only
+      # ever set as a side effect of find_package(ECM), which this repo
+      # calls solely from shell_integration/dolphin/CMakeLists.txt -- a
+      # Linux-only subdirectory never processed on Windows. So on
+      # Windows ECM_FIND_MODULE_DIR is simply never set, the lookup
+      # falls through to CMake's own unrelated built-in
+      # Modules/FindIcotool.cmake (shipped since CMake 3.3), and on
+      # Windows' case-insensitive filesystem that resolves successfully
+      # by filename collision -- but sets Icotool_FOUND (CMake's own
+      # module's casing), not the IcoTool_FOUND ecm_add_app_icon
+      # actually checks, so the icon is silently never generated. Set
+      # ECM_FIND_MODULE_DIR explicitly so the real module is found.
       - name: Configure, compile and install
         env:
           VERSION: ${{ github.ref_name }}
@@ -755,8 +787,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=OFF `
             -DBUILD_WIN_MSI=ON `
+            -DECM_FIND_MODULE_DIR="$env:DEPS_PREFIX\share\ECM\find-modules" `
             -DIcoTool_EXECUTABLE="C:\msys64\mingw64\bin\icotool.exe" `
-            -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_ID" `
+            -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_NUMBER" `
             -DMIRALL_VERSION_SUFFIX=""
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -794,6 +827,41 @@ jobs:
           & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      # Signed before WiX harvests install\bin (next steps) so the exe
+      # packaged inside the MSI -- and the one copied into the portable
+      # zip further down -- are both already signed. -output_dir_path is
+      # a scratch dir rather than the exe's own directory, to avoid
+      # relying on undocumented in-place-overwrite confirmation behavior.
+      - name: Sign application executable
+        if: false
+        shell: pwsh
+        env:
+          SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSLCOM_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSLCOM_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          SSLCOM_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+        run: |
+          $exe = "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          $signedDir = "$env:RUNNER_TEMP\signed-exe"
+          New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
+
+          Push-Location "$env:CODESIGNTOOL_DIR"
+          try {
+            .\CodeSignTool.bat sign `
+              -credential_id="$env:SSLCOM_CREDENTIAL_ID" `
+              -username="$env:SSLCOM_USERNAME" `
+              -password="$env:SSLCOM_PASSWORD" `
+              -totp_secret="$env:SSLCOM_TOTP_SECRET" `
+              -input_file_path="$exe" `
+              -output_dir_path="$signedDir"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Pop-Location
+          }
+
+          Copy-Item (Join-Path $signedDir "files_fm_sync.exe") $exe -Force
+
       # Nextcloud.wxs expects files_fm_sync.ico next to the exe (for
       # Start Menu/Desktop shortcuts), but the .ico that ecm_add_app_icon
       # generates for the RC resource is never installed as a loose file.
@@ -823,6 +891,41 @@ jobs:
           if (-not $installer) { Write-Error "Could not locate a packaged .msi under install\msi"; exit 1 }
           Copy-Item $installer.FullName -Destination dist\
 
+      # Signs the MSI package itself -- separate from signing the exe
+      # inside it above, since Windows checks the installer package's
+      # own Authenticode signature too (e.g. for SmartScreen reputation).
+      - name: Sign MSI installer
+        if: false
+        shell: pwsh
+        env:
+          SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSLCOM_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSLCOM_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          SSLCOM_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+        run: |
+          $msi = Get-ChildItem -Path dist -Filter "*.msi" | Select-Object -First 1
+          if (-not $msi) { Write-Error "Could not locate a .msi under dist\ to sign"; exit 1 }
+
+          $signedDir = "$env:RUNNER_TEMP\signed-msi"
+          New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
+
+          Push-Location "$env:CODESIGNTOOL_DIR"
+          try {
+            .\CodeSignTool.bat sign `
+              -credential_id="$env:SSLCOM_CREDENTIAL_ID" `
+              -username="$env:SSLCOM_USERNAME" `
+              -password="$env:SSLCOM_PASSWORD" `
+              -totp_secret="$env:SSLCOM_TOTP_SECRET" `
+              -input_file_path="$($msi.FullName)" `
+              -output_dir_path="$signedDir"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Pop-Location
+          }
+
+          Copy-Item (Join-Path $signedDir $msi.Name) $msi.FullName -Force
+
       # Portable zip of the same install\bin tree the MSI installs --
       # windeployqt + the DLL-staging step above have already fully
       # populated it with Qt's runtime plus every third-party DLL.
@@ -848,7 +951,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [appimage, flatpak, snap, macos]
+    needs: [appimage, flatpak, snap, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
