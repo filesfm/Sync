@@ -193,6 +193,7 @@ target_include_directories(CfApiShellExtensions PRIVATE ${GeneratedFilesPath})
 target_include_directories(CfApiShellExtensions PRIVATE ${CMAKE_SOURCE_DIR})
 
 target_compile_features(CfApiShellExtensions PRIVATE cxx_std_17)
+target_compile_definitions(CfApiShellExtensions PRIVATE _SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
 
 set_target_properties(CfApiShellExtensions
     PROPERTIES
