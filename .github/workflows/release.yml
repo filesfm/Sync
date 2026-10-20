@@ -818,13 +818,17 @@ jobs:
           Get-ChildItem -Path "$env:DEPS_PREFIX" -Recurse -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
           Get-ChildItem -Path "$env:VCPKG_INSTALLED\bin" -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
 
-      # Unlike the macOS job's macdeployqt call, nothing in this project's
-      # CMake stages Qt's runtime DLLs/plugins next to the exe -- without
-      # this the MSI would install an app that can't start.
+      # Nothing in this project's CMake stages Qt's runtime DLLs/plugins
+      # next to the exe -- without this the MSI would install an app that
+      # can't start. --qmldir is required (matches the macOS job's
+      # -qmldir=... to macdeployqt and the AppImage job's QML_SOURCES_PATHS)
+      # so windeployqt scans the app's QML imports and deploys the
+      # QtQuick/QtQuick.Controls2 QML plugins -- without it, no qml
+      # directory is staged and the QML-based tray window fails to load.
       - name: Deploy Qt runtime with windeployqt
         shell: pwsh
         run: |
-          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       # Signed before WiX harvests install\bin (next steps) so the exe
