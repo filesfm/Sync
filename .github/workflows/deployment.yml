@@ -16,6 +16,31 @@ on:
           - beta
           - candidate
           - stable
+      publish_snap:
+        description: 'Publish to Snap Store'
+        required: true
+        default: true
+        type: boolean
+      publish_chocolatey:
+        description: 'Publish to Chocolatey'
+        required: true
+        default: true
+        type: boolean
+      publish_ppa:
+        description: 'Publish to Launchpad PPA'
+        required: true
+        default: true
+        type: boolean
+      publish_copr:
+        description: 'Publish to Copr'
+        required: true
+        default: true
+        type: boolean
+      publish_homebrew:
+        description: 'Publish to Homebrew tap'
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -23,6 +48,7 @@ permissions:
 jobs:
   publish-snap:
     name: Publish Snap
+    if: ${{ inputs.publish_snap }}
     runs-on: ubuntu-latest
     steps:
       - name: Download snap from GitHub Release
@@ -58,6 +84,7 @@ jobs:
 
   publish-chocolatey:
     name: Publish Chocolatey
+    if: ${{ inputs.publish_chocolatey }}
     runs-on: windows-2022
     defaults:
       run:
@@ -83,6 +110,7 @@ jobs:
 
   publish-ppa:
     name: Publish PPA (${{ matrix.series }})
+    if: ${{ inputs.publish_ppa }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -146,6 +174,7 @@ jobs:
 
   publish-copr:
     name: Publish Copr
+    if: ${{ inputs.publish_copr }}
     runs-on: ubuntu-latest
     container:
       image: fedora:41
@@ -187,6 +216,7 @@ jobs:
 
   publish-homebrew:
     name: Publish Homebrew cask
+    if: ${{ inputs.publish_homebrew }}
     runs-on: ubuntu-latest
     steps:
       - name: Download macOS DMG from GitHub Release
