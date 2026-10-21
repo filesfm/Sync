@@ -17,7 +17,7 @@
     <bugTrackerUrl>https://github.com/filesfm/Sync/issues</bugTrackerUrl>
     <tags>files-fm sync file-sync webdav desktop qt</tags>
     <summary>Files.fm Sync desktop client</summary>
-    <description>Files.fm Sync keeps a local folder synchronized with your Files.fm storage, built on the Nextcloud desktop sync engine.</description>
+    <description>Files.fm Sync keeps a local folder synchronized with your Files.fm storage, built on the Nextcloud desktop sync engine. A Files.fm account is required; free accounts include limited storage, with paid plans available for more.</description>
   </metadata>
   <files>
     <file src="chocolateyinstall.ps1" target="tools" />
