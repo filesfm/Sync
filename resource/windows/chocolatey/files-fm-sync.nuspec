@@ -8,8 +8,8 @@
     <title>Files.fm Sync</title>
     <authors>filesfm</authors>
     <projectUrl>https://github.com/filesfm/Sync</projectUrl>
-    <iconUrl>https://cdn.jsdelivr.net/gh/filesfm/Sync@main/theme/colored/files_fm_sync-icon.svg</iconUrl>
-    <copyright>2025 Files.fm SIA</copyright>
+    <iconUrl>https://cdn.jsdelivr.net/gh/filesfm/Sync@83638b692e8b44ff0138aa4135daddc53aaab639/theme/colored/files_fm_sync-icon.svg</iconUrl>
+    <copyright>2025 Files.fm SIA; portions 2024 Nextcloud GmbH and Nextcloud contributors (GPL-2.0-or-later)</copyright>
     <licenseUrl>https://github.com/filesfm/Sync/blob/main/COPYING</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <projectSourceUrl>https://github.com/filesfm/Sync</projectSourceUrl>
