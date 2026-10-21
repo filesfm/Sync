@@ -16,7 +16,7 @@ Files.fm Sync is a desktop client that keeps local folders continuously synchron
 | Windows         | ![Windows version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fwindows-version.json) | [![Windows test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fwindows-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml) |
 | Fedora          | ![Fedora version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Ffedora-version.json)   | [![Fedora test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Ffedora-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)   |
 | Ubuntu          | ![Ubuntu version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fubuntu-version.json)   | [![Ubuntu test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fubuntu-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)   |
-| Linux (General) | ![Linux version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-version.json)     | [![Linux test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)     |
+| Linux (AppImage) | ![Linux version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-version.json)     | [![Linux test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Flinux-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)     |
 | Linux (Snap)    | ![Snap version](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fsnap-version.json)       | [![Snap test](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Ffilesfm%2FSync%2Fpackage-status%2Fbadges%2Fsnap-status.json)](https://github.com/filesfm/Sync/actions/workflows/package-smoke.yml)       |
 
 ## Contents
@@ -44,7 +44,7 @@ Files.fm Sync is a desktop client that keeps local folders continuously synchron
 | Windows          | `choco install -y files-fm-sync`                                                                    |
 | Fedora           | `sudo dnf copr enable -y filesfm/Sync && sudo dnf install -y files-fm-sync`                          |
 | Ubuntu           | `sudo add-apt-repository -y ppa:filesfm/sync && sudo apt update && sudo apt install -y files-fm-sync` |
-| Linux (General)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
+| Linux (AppImage)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
 | Linux (Snap)     | `sudo snap install files-fm-sync`                                                                   |
 
 ---
@@ -57,7 +57,7 @@ Files.fm Sync is a desktop client that keeps local folders continuously synchron
 | Windows          | `choco upgrade -y files-fm-sync`                         |
 | Fedora           | `sudo dnf upgrade -y files-fm-sync`                      |
 | Ubuntu           | `sudo apt update && sudo apt upgrade -y files-fm-sync`   |
-| Linux (General)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
+| Linux (AppImage)  | `curl -sL https://api.github.com/repos/filesfm/Sync/releases/latest \| grep -o '"browser_download_url": *"[^"]*\.AppImage"' \| head -n1 \| cut -d'"' -f4 \| xargs -r curl -fL -O` |
 | Linux (Snap)     | `sudo snap refresh files-fm-sync`                                                                   |
 
 ---
