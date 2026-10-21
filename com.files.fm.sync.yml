@@ -90,9 +90,16 @@ modules:
       - -DBUILD_SHELL_INTEGRATION=OFF
       - -DBUILD_UPDATER=OFF
       - -DMIRALL_VERSION_SUFFIX=
+    # Flathub builds from this manifest alone, with no access to a local
+    # checkout, so the source must be a pinned git ref rather than `type:
+    # dir`. Bump tag+commit together with VERSION.cmake/metainfo.xml/
+    # snap/snapcraft.yaml on every release -- there is no script that does
+    # this automatically.
     sources:
-      - type: dir
-        path: .
+      - type: git
+        url: https://github.com/filesfm/Sync.git
+        tag: v3.16.8
+        commit: 580badacffec1bcd4d2bdecbb5167559fe4f004a
     post-install:
       - install -Dm644 com.files.fm.sync.metainfo.xml
         /app/share/metainfo/com.files.fm.sync.metainfo.xml

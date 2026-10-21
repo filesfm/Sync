@@ -25,6 +25,14 @@
   </description>
   <launchable type="desktop-id">com.files.fm.sync.desktop</launchable>
   <url type="homepage">https://files.fm</url>
+  <!-- Re-pin this URL to the release tag once this lands in a tagged
+       release, instead of tracking main. -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>Files.fm Sync activity list</caption>
+      <image>https://raw.githubusercontent.com/filesfm/Sync/main/doc/images/screenshots/activity-list.png</image>
+    </screenshot>
+  </screenshots>
   <content_rating type="oars-1.1" />
   <releases>
     <release version="3.16.8" date="2026-10-21" />
