@@ -9,7 +9,7 @@ Build-Depends: debhelper-compat (= 13), cmake, ninja-build, g++, pkg-config,
  libx11-dev, libxkbcommon-dev, libxkbcommon-x11-dev, libxcb-cursor-dev,
  libglib2.0-dev, libdbus-1-dev, libcloudproviders-dev,
  zlib1g-dev, libbz2-dev, liblzma-dev, libzstd-dev, librsvg2-bin,
- libkf6archive-dev, qt6keychain-dev
+ libkf6archive-dev, qtkeychain-qt6-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/filesfm/Sync
 Rules-Requires-Root: no
