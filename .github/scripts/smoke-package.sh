@@ -58,15 +58,6 @@ if [ -n "${DISCOVERY_ERROR:-}" ]; then
   fail "version discovery failed: $DISCOVERY_ERROR"
 fi
 
-# Packages with no pre-last version are skipped for now, as a whole.
-if [ -z "${PRELAST:-}" ]; then
-  echo "No pre-last version is published for $key; skipping."
-  skipped=true
-  exit 0
-fi
-
-[ -n "${LATEST:-}" ] || fail "no latest version is published"
-
 # shellcheck source=/dev/null
 source "$here/packages/$key.sh"
 
@@ -77,24 +68,39 @@ cd "$workdir"
 step "prepare"
 prepare
 
+[ -n "${LATEST:-}" ] || fail "no latest version is published"
+
 step "install latest $LATEST"
 install_latest
 expect_version "$LATEST"
 run_app
 
-step "remove"
-remove
-expect_removed
+# Packages whose channel exposes version history (install_prelast is defined)
+# also get the pre-last-install -> update cycle. Channels with no history API
+# (e.g. Snap) only get the install/remove check above and skip straight to
+# the final removal below.
+if declare -f install_prelast >/dev/null; then
+  step "remove"
+  remove
+  expect_removed
 
-step "install pre-last $PRELAST"
-install_prelast
-expect_version "$PRELAST"
-run_app
+  # Packages with no pre-last version yet are skipped for now, as a whole.
+  if [ -z "${PRELAST:-}" ]; then
+    echo "No pre-last version is published for $key; skipping the rest."
+    skipped=true
+    exit 0
+  fi
 
-step "update to $LATEST"
-update
-expect_version "$LATEST"
-run_app
+  step "install pre-last $PRELAST"
+  install_prelast
+  expect_version "$PRELAST"
+  run_app
+
+  step "update to $LATEST"
+  update
+  expect_version "$LATEST"
+  run_app
+fi
 
 step "remove"
 remove

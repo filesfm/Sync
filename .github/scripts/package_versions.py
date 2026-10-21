@@ -27,6 +27,7 @@ CHOCO_FEED = (
     "https://community.chocolatey.org/api/v2/Packages()"
     "?$filter=Id%20eq%20%27files-fm-sync%27"
 )
+SNAP_INFO = "https://api.snapcraft.io/v2/snaps/info/files-fm-sync"
 UBUNTU_SERIES = "noble"  # the series the ubuntu-latest runner uses
 
 
@@ -111,12 +112,26 @@ def macos():
     return result
 
 
+def snap():
+    # The Snap Store's public API only exposes the current revision per channel,
+    # not history, so "prelast" is always empty here (see packages/snap.sh).
+    req = urllib.request.Request(SNAP_INFO, headers={"Snap-Device-Series": "16"})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        info = json.loads(response.read())
+    stable = next(
+        c for c in info["channel-map"]
+        if c["channel"]["name"] == "stable" and c["channel"]["architecture"] == "amd64"
+    )
+    return {"latest": stable["version"], "prelast": ""}
+
+
 CHANNELS = {
     "linux": linux,
     "windows": windows,
     "fedora": fedora,
     "ubuntu": ubuntu,
     "macos": macos,
+    "snap": snap,
 }
 
 

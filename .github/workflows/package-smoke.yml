@@ -52,6 +52,8 @@ jobs:
             runs-on: ubuntu-latest
           - key: linux
             runs-on: ubuntu-latest
+          - key: snap
+            runs-on: ubuntu-latest
 
     steps:
       - name: Checkout

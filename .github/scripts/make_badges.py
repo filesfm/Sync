@@ -16,6 +16,7 @@ NAMES = {
     "fedora": "Fedora",
     "ubuntu": "Ubuntu",
     "linux": "Linux",
+    "snap": "Snap",
 }
 STATUS_COLORS = {"passing": "brightgreen", "failing": "red", "skipped": "yellow"}
 
