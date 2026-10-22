@@ -121,11 +121,16 @@ void Logger::doLog(QtMsgType type, const QMessageLogContext &ctx, const QString 
         const auto msgW = QStringLiteral("%1\n").arg(msg).toStdWString();
         OutputDebugString(msgW.c_str());
     }
+#elif defined Q_OS_MACOS && defined QT_DEBUG
+    // write logs to Xcode console (stderr)
+    {
+        std::cerr << msg.toStdString() << std::endl;
+    }
 #endif
     {
         QMutexLocker lock(&_mutex);
 
-        if (linesCounter >= MaxLogLinesCount) {
+        if (!logFile().isEmpty() && linesCounter >= MaxLogLinesCount) {
             linesCounter = 0;
             if (_logstream) {
                 _logstream->flush();

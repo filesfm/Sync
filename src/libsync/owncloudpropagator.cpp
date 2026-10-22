@@ -562,6 +562,10 @@ void OwncloudPropagator::start(SyncFileItemVector &&items)
                 // aborted while uploading this directory (which is now removed).  We can ignore it.
 
                 // increase the number of subjobs that would be there.
+                if (item->_wantsSpecificActions == SyncFileItem::SynchronizationOptions::MoveToClientTrashBin) {
+                    qCInfo(lcPropagator()) << "special handling for delete/new conflict";
+                    delDirJob->willDeleteItemToClientTrashBin(item);
+                }
                 if (delDirJob) {
                     delDirJob->increaseAffectedCount();
                 }
@@ -690,7 +694,8 @@ void OwncloudPropagator::startFilePropagation(const SyncFileItemPtr &item,
         const auto isDownload = item->_direction == SyncFileItem::Down &&
             (item->_instruction == CSYNC_INSTRUCTION_NEW || item->_instruction == CSYNC_INSTRUCTION_SYNC);
         const auto isVirtualFile = item->_type == ItemTypeVirtualFile;
-        const auto shouldAddBulkPropagateDownloadItem = isDownload && isVirtualFile && isVfsCfApi;
+        const auto isEncrypted = item->_e2eEncryptionStatus != SyncFileItem::EncryptionStatus::NotEncrypted;
+        const auto shouldAddBulkPropagateDownloadItem = isDownload && isVirtualFile && isVfsCfApi && !isEncrypted;
 
         if (shouldAddBulkPropagateDownloadItem) {
             addBulkPropagateDownloadItem(item, directories);
@@ -748,7 +753,7 @@ void OwncloudPropagator::processE2eeMetadataMigration(const SyncFileItemPtr &ite
         if (foundDirectory.second) {
             topLevelitem = foundDirectory.second->_item;
             if (!foundDirectory.second->_subJobs._jobsToDo.isEmpty()) {
-                for (const auto jobToDo : foundDirectory.second->_subJobs._jobsToDo) {
+                for (const auto jobToDo : std::as_const(foundDirectory.second->_subJobs._jobsToDo)) {
                     if (const auto foundExistingUpdateMigratedE2eeMetadataJob = qobject_cast<UpdateMigratedE2eeMetadataJob *>(jobToDo)) {
                         existingUpdateJob = foundExistingUpdateMigratedE2eeMetadataJob;
                         break;
@@ -799,7 +804,7 @@ bool OwncloudPropagator::localFileNameClash(const QString &relFile)
     Q_ASSERT(!file.isEmpty());
 
     if (!file.isEmpty() && Utility::fsCasePreserving()) {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
         const QFileInfo fileInfo(file);
         if (!fileInfo.exists()) {
             return false;
@@ -874,7 +879,7 @@ bool OwncloudPropagator::hasCaseClashAccessibilityProblem(const QString &relfile
 
 QString OwncloudPropagator::fullLocalPath(const QString &tmp_file_name) const
 {
-    return _localDir + tmp_file_name;
+    return QDir::fromNativeSeparators(FileSystem::joinPath(_localDir, tmp_file_name));
 }
 
 QString OwncloudPropagator::localPath() const
@@ -976,7 +981,7 @@ bool OwncloudPropagator::createConflict(const SyncFileItemPtr &item,
 
         // If the file is locked, we want to retry this sync when it
         // becomes available again.
-        if (FileSystem::isFileLocked(fn)) {
+        if (FileSystem::isFileLocked(fn, FileSystem::LockMode::SharedRead)) {
             emit seenLockedFile(fn);
         }
 
@@ -1050,7 +1055,7 @@ OCC::Optional<QString> OwncloudPropagator::createCaseClashConflict(const SyncFil
 
         // If the file is locked, we want to retry this sync when it
         // becomes available again.
-        if (FileSystem::isFileLocked(filename)) {
+        if (FileSystem::isFileLocked(filename, FileSystem::LockMode::SharedRead)) {
             emit seenLockedFile(filename);
         }
 
@@ -1374,6 +1379,16 @@ PropagateDirectory::PropagateDirectory(OwncloudPropagator *propagator, const Syn
     connect(&_subJobs, &PropagatorJob::finished, this, &PropagateDirectory::slotSubJobsFinished);
 }
 
+void PropagateDirectory::willDeleteItemToClientTrashBin(const SyncFileItemPtr &item)
+{
+    auto deleteFolderJob = dynamic_cast<PropagateLocalRemove*>(_firstJob.get());
+    if (!deleteFolderJob) {
+        return;
+    }
+
+    deleteFolderJob->willDeleteItemToClientTrashBin(propagator()->fullLocalPath(item->_file));
+}
+
 PropagatorJob::JobParallelism PropagateDirectory::parallelism() const
 {
     // If any of the non-finished sub jobs is not parallel, we have to wait
@@ -1489,8 +1504,7 @@ void PropagateDirectory::slotSubJobsFinished(SyncFileItem::Status status)
             || _item->_instruction == CSYNC_INSTRUCTION_UPDATE_METADATA) {
 
             if (!_item->_remotePerm.isNull() &&
-                !_item->_remotePerm.hasPermission(RemotePermissions::CanAddFile) &&
-                !_item->_remotePerm.hasPermission(RemotePermissions::CanAddSubDirectories)) {
+                !_item->_remotePerm.hasPermissionsForReadWrite()) {
                 try {
                     if (FileSystem::fileExists(propagator()->fullLocalPath(_item->_file))) {
                         FileSystem::setFolderPermissions(propagator()->fullLocalPath(_item->_file), FileSystem::FolderPermissions::ReadOnly);
@@ -1805,7 +1819,7 @@ void PropagateIgnoreJob::start()
 void PropagateVfsUpdateMetadataJob::start()
 {
     const auto fullFileName = propagator()->fullLocalPath(_item->_file);
-    const auto result = propagator()->syncOptions()._vfs->updatePlaceholderMarkInSync(fullFileName, _item->_fileId);
+    const auto result = propagator()->syncOptions()._vfs->updatePlaceholderMarkInSync(fullFileName, *_item);
     emit propagator()->touchedFile(fullFileName);
     if (!result) {
         qCWarning(lcPropagator()) << "error when updating VFS metadata" << result.error();

@@ -48,6 +48,7 @@
 #include <QProcess>
 #include <QElapsedTimer>
 #include <QFileInfo>
+#include <QStorageInfo>
 #include <qtextcodec.h>
 
 namespace OCC {
@@ -637,6 +638,7 @@ void SyncEngine::startSync()
     _remnantReadOnlyFolders.clear();
 
     _discoveryPhase = std::make_unique<DiscoveryPhase>();
+    _discoveryPhase->_fileSystemReliablePermissions = _filesystemPermissionsReliable;
     _discoveryPhase->_leadingAndTrailingSpacesFilesAllowed = _leadingAndTrailingSpacesFilesAllowed;
     _discoveryPhase->_account = _account;
     _discoveryPhase->_excludes = _excludedFiles.data();
@@ -765,6 +767,7 @@ void SyncEngine::startSync()
     
     _discoveryPhase->startJob(discoveryJob);
     connect(discoveryJob, &ProcessDirectoryJob::etag, this, &SyncEngine::slotRootEtagReceived);
+    connect(discoveryJob, &ProcessDirectoryJob::updatedRootFolderQuota, account().data(), &Account::rootFolderQuotaChanged);
     connect(_discoveryPhase.get(), &DiscoveryPhase::addErrorToGui, this, &SyncEngine::addErrorToGui);
 }
 
@@ -825,6 +828,17 @@ void SyncEngine::slotDiscoveryFinished()
     _progressInfo->_currentDiscoveredLocalFolder.clear();
     _progressInfo->_status = ProgressInfo::Reconcile;
     emit transmissionProgress(*_progressInfo);
+
+    if (shouldRestartSync()) {
+        // Fail the sync once and try again next time.
+        qCInfo(lcEngine) << "Restarting sync as discovery results might be incomplete.";
+        _anotherSyncNeeded = DelayedFollowUp;
+        _restartedSyncAfterDiscovery = true;
+        finalize(false);
+        return;
+    } else {
+        _restartedSyncAfterDiscovery = false;
+    }
 
     if (handleMassDeletion()) {
         return;
@@ -1067,22 +1081,6 @@ void SyncEngine::finishSync()
     emit transmissionProgress(*_progressInfo);
     _progressInfo->startEstimateUpdates();
 
-           // post update phase script: allow to tweak stuff by a custom script in debug mode.
-    if (!qEnvironmentVariableIsEmpty("OWNCLOUD_POST_UPDATE_SCRIPT")) {
-#ifndef NDEBUG
-        const QString script = qEnvironmentVariable("OWNCLOUD_POST_UPDATE_SCRIPT");
-
-        qCDebug(lcEngine) << "Post Update Script: " << script;
-        auto scriptArgs = script.split(QRegularExpression("\\s+"), Qt::SkipEmptyParts);
-        if (scriptArgs.size() > 0) {
-            const auto scriptExecutable = scriptArgs.takeFirst();
-            QProcess::execute(scriptExecutable, scriptArgs);
-        }
-#else
-        qCWarning(lcEngine) << "**** Attention: POST_UPDATE_SCRIPT installed, but not executed because compiled with NDEBUG";
-#endif
-    }
-
     // do a database commit
     _journal->commit(QStringLiteral("post treewalk"));
 
@@ -1115,6 +1113,39 @@ void SyncEngine::finishSync()
     _propagator->start(std::move(_syncItems));
 
     qCInfo(lcEngine) << "#### Post-Reconcile end #################################################### " << _stopWatch.addLapTime(QStringLiteral("Post-Reconcile Finished")) << "ms";
+}
+
+bool SyncEngine::shouldRestartSync() const
+{
+    // On Windows with cfapi enabled it's possible that the discovery phase didn't detect all changed files.
+    //
+    // There is a disconnect between file system events reported and what the low-level file system APIs
+    // return -- it's possible that a folder did not yet contain the changed files on the file system even
+    // though these files were already reported by the folder watcher.  This sometimes happens when moving a
+    // directory from one place to another; in that case the rename would not be caught during the discovery
+    // phase, resulting in a remote delete operation of the folder at the original path.
+    //
+    // It's better to restart the sync a bit later to ensure we didn't miss anything.
+
+    if (_restartedSyncAfterDiscovery) {
+        // This is the second attempt: assume the discovery result is complete.
+        return false;
+    }
+
+    if (const auto vfs = _syncOptions._vfs; vfs && vfs->mode() != Vfs::WindowsCfApi) {
+        // Not using cfapi -- no issue there.
+        return false;
+    }
+
+    auto hasDeletionInstructions = false;
+    for (const auto &syncItem : _syncItems) {
+        // If there's at least one remove instruction: bail out, we might have lost a rename.
+        hasDeletionInstructions = syncItem->_instruction == CSYNC_INSTRUCTION_REMOVE;
+        if (hasDeletionInstructions) {
+            break;
+        }
+    }
+    return hasDeletionInstructions;
 }
 
 bool SyncEngine::handleMassDeletion()
@@ -1178,6 +1209,8 @@ void SyncEngine::handleRemnantReadOnlyFolders()
             const auto deletionCallback = [this] (const QString &deleteItem, bool) {
                 slotAddTouchedFile(deleteItem);
             };
+
+            qCInfo(lcEngine()) << "delete" << _localPath + oneFolder->_file;
             FileSystem::removeRecursively(_localPath + oneFolder->_file, deletionCallback, nullptr, deletionCallback);
         } else {
             FileSystem::remove(_localPath + oneFolder->_file);
@@ -1265,7 +1298,7 @@ void SyncEngine::setLocalDiscoveryOptions(LocalDiscoveryStyle style, std::set<QS
         // only execute if logging is enabled
         auto debug = qDebug(lcEngine);
         debug << "paths to discover locally";
-        for (auto path : _localDiscoveryPaths) {
+        for (const auto &path : _localDiscoveryPaths) {
             debug << path;
         }
     }
@@ -1295,6 +1328,11 @@ void SyncEngine::setSingleItemDiscoveryOptions(const SingleItemDiscoveryOptions 
 const SyncEngine::SingleItemDiscoveryOptions &SyncEngine::singleItemDiscoveryOptions() const
 {
     return _singleItemDiscoveryOptions;
+}
+
+void SyncEngine::setFilesystemPermissionsReliable(bool reliable)
+{
+    _filesystemPermissionsReliable = reliable;
 }
 
 bool SyncEngine::shouldDiscoverLocally(const QString &path) const
@@ -1358,8 +1396,9 @@ void SyncEngine::wipeVirtualFiles(const QString &localPath, SyncJournalDb &journ
 {
     qCInfo(lcEngine) << "Wiping virtual files inside" << localPath;
     const auto resGetFilesBelowPath = journal.getFilesBelowPath(QByteArray(), [&](const SyncJournalFileRecord &rec) {
-        if (rec._type != ItemTypeVirtualFile && rec._type != ItemTypeVirtualFileDownload)
+        if (rec._type != ItemTypeVirtualFile && rec._type != ItemTypeVirtualFileDownload && rec._type != ItemTypeVirtualDirectory) {
             return;
+        }
 
         qCDebug(lcEngine) << "Removing db record for" << rec.path();
         if (!journal.deleteFileRecord(rec._path)) {

@@ -9,12 +9,14 @@
 #include "accountfwd.h"
 #include "capabilities.h"
 #include "clientsideencryptionjobs.h"
+#include "common/utility.h"
 #include "configfile.h"
 #include "cookiejar.h"
 #include "creds/abstractcredentials.h"
 #include "networkjobs.h"
 #include "pushnotifications.h"
 #include "theme.h"
+#include "updatechannel.h"
 #include "version.h"
 
 #include "deletejob.h"
@@ -90,6 +92,7 @@ AccountPtr Account::create()
 {
     AccountPtr acc = AccountPtr(new Account);
     acc->setSharedThis(acc);
+    acc->_e2e.setAccount(acc);
     return acc;
 }
 
@@ -108,7 +111,11 @@ QString Account::davPath() const
 
 QString Account::davPathRoot() const
 {
-    return davPathBase() + QLatin1Char('/') + davUser();
+    if (_isPublicLink) {
+        return QStringLiteral("/public.php/webdav");
+    } else {
+        return davPathBase() + QLatin1Char('/') + davUser();
+    }
 }
 
 void Account::setSharedThis(AccountPtr sharedThis)
@@ -223,7 +230,7 @@ void Account::setDavDisplayName(const QString &newDisplayName)
 QString Account::prettyName() const
 {
     // If davDisplayName is empty (can be several reasons, simplest is missing login at startup), fall back to username
-    auto name = davDisplayName();
+    auto name = isPublicShareLink() ? tr("Public Share Link") : davDisplayName();
 
     if (name.isEmpty()) {
         name = davUser();
@@ -434,17 +441,20 @@ void Account::resetNetworkAccessManager()
         this, &Account::proxyAuthenticationRequired);
 }
 
-QNetworkAccessManager *Account::networkAccessManager()
+QNetworkAccessManager *Account::networkAccessManager() const
 {
     return _networkAccessManager.data();
 }
 
-QSharedPointer<QNetworkAccessManager> Account::sharedNetworkAccessManager()
+QSharedPointer<QNetworkAccessManager> Account::sharedNetworkAccessManager() const
 {
     return _networkAccessManager;
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QIODevice *data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
+                                       const QUrl &url,
+                                       QNetworkRequest req,
+                                       QIODevice *data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -462,7 +472,10 @@ QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, 
     return _networkAccessManager->sendCustomRequest(req, verb, data);
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, const QByteArray &data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
+                                       const QUrl &url,
+                                       QNetworkRequest req,
+                                       const QByteArray &data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -480,7 +493,10 @@ QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, 
     return _networkAccessManager->sendCustomRequest(req, verb, data);
 }
 
-QNetworkReply *Account::sendRawRequest(const QByteArray &verb, const QUrl &url, QNetworkRequest req, QHttpMultiPart *data)
+QNetworkReply *Account::sendRawRequest(const QByteArray &verb,
+                                       const QUrl &url,
+                                       QNetworkRequest req,
+                                       QHttpMultiPart *data)
 {
     req.setUrl(url);
     req.setSslConfiguration(this->getOrCreateSslConfig());
@@ -549,8 +565,24 @@ void Account::setSslErrorHandler(AbstractSslErrorHandler *handler)
 
 void Account::setUrl(const QUrl &url)
 {
-    _url = url;
+    const QRegularExpression discoverPublicLinks(R"(((https|http)://[^/]*).*/s/([^/]*)$)");
+    const auto isPublicLink = discoverPublicLinks.match(url.toString());
+    if (isPublicLink.hasMatch()) {
+        _url = QUrl::fromUserInput(isPublicLink.captured(1));
+        _url.setUserName(isPublicLink.captured(3));
+        setDavUser(isPublicLink.captured(3));
+        _isPublicLink = true;
+        _publicShareLinkUrl = url;
+    } else {
+        _url = url;
+    }
+
     _userVisibleUrl = url;
+}
+
+QUrl Account::publicShareLinkUrl() const
+{
+    return _publicShareLinkUrl;
 }
 
 void Account::setUserVisibleHost(const QString &host)
@@ -644,7 +676,7 @@ void Account::slotHandleSslErrors(QNetworkReply *reply, QList<QSslError> errors)
         }
 
         // Mark all involved certificates as rejected, so we don't ask the user again.
-        for (const auto &error : errors) {
+        for (const auto &error : std::as_const(errors)) {
             if (!_rejectedCertificates.contains(error.certificate())) {
                 _rejectedCertificates.append(error.certificate());
             }
@@ -970,7 +1002,8 @@ void Account::slotDirectEditingRecieved(const QJsonDocument &json)
     auto data = json.object().value("ocs").toObject().value("data").toObject();
     const auto editors = data.value("editors").toObject();
 
-    for (const auto &editorKey : editors.keys()) {
+    const auto &allKeys = editors.keys();
+    for (const auto &editorKey : allKeys) {
         auto editor = editors.value(editorKey).toObject();
 
         const QString id = editor.value("id").toString();
@@ -982,11 +1015,11 @@ void Account::slotDirectEditingRecieved(const QJsonDocument &json)
 
             auto *directEditor = new DirectEditor(id, name);
 
-            for (const auto &mimeType : mimeTypes) {
+            for (const auto &mimeType : std::as_const(mimeTypes)) {
                 directEditor->addMimetype(mimeType.toString().toLatin1());
             }
 
-            for (const auto &optionalMimeType : optionalMimeTypes) {
+            for (const auto &optionalMimeType : std::as_const(optionalMimeTypes)) {
                 directEditor->addOptionalMimetype(optionalMimeType.toString().toLatin1());
             }
 
@@ -1178,6 +1211,85 @@ void Account::setAskUserForMnemonic(const bool ask)
     emit askUserForMnemonicChanged();
 }
 
+void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, const QString &remoteSyncRootPath, const QString &subPath, SyncJournalDb *journalForFolder)
+{
+    qCInfo(lcAccount()) << "ls col job requested for" << subPath;
+
+    if (!credentials()->ready()) {
+        qCWarning(lcAccount()) << "credentials are not ready" << subPath;
+        promise->finish();
+        return;
+    }
+
+    auto listFolderJob = new OCC::LsColJob{sharedFromThis(), subPath};
+
+    const auto props = LsColJob::defaultProperties(LsColJob::FolderType::ChildFolder, sharedFromThis());
+
+    listFolderJob->setProperties(props);
+
+    QObject::connect(listFolderJob, &OCC::LsColJob::networkError, this, [promise, subPath] (QNetworkReply *reply) {
+        if (reply) {
+            qCWarning(lcAccount()) << "ls col job" << subPath << "error" << reply->errorString();
+        }
+
+        qCWarning(lcAccount()) << "ls col job" << subPath << "error without a reply";
+        promise->finish();
+    });
+
+    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithError, this, [promise, subPath] (QNetworkReply *reply) {
+        if (reply) {
+            qCWarning(lcAccount()) << "ls col job" << subPath << "error" << reply->errorString();
+        }
+
+        qCWarning(lcAccount()) << "ls col job" << subPath << "error without a reply";
+        promise->finish();
+    });
+
+    QObject::connect(listFolderJob, &OCC::LsColJob::finishedWithoutError, this, [promise, subPath] () {
+        qCInfo(lcAccount()) << "ls col job" << subPath << "finished";
+        promise->finish();
+    });
+
+    listFolderJob->setProperty("ignoredFirst", false);
+    const auto baseRemotePath = Utility::trailingSlashPath(Utility::noLeadingSlashPath(remoteSyncRootPath));
+    auto syncRootPath = subPath;
+    if (subPath.startsWith(baseRemotePath)) {
+        syncRootPath = syncRootPath.mid(baseRemotePath.size());
+    }
+
+    QObject::connect(listFolderJob, &OCC::LsColJob::directoryListingIterated, this, [promise, remoteSyncRootPath, syncRootPath, journalForFolder, this](const QString &completeDavPath, const QMap<QString, QString> &properties) {
+        if (!sender()->property("ignoredFirst").toBool()) {
+            qCDebug(lcAccount()) << "skip first item";
+            sender()->setProperty("ignoredFirst", true);
+            return;
+        }
+
+        qCInfo(lcAccount()) << "ls col job" << syncRootPath << "new file" << completeDavPath << properties.count();
+
+        const auto slash = completeDavPath.lastIndexOf('/');
+        const auto itemFileName = completeDavPath.mid(slash + 1);
+        const auto absoluteItemPathName = syncRootPath.isEmpty() ? itemFileName : Utility::noTrailingSlashPath(syncRootPath) + '/' + itemFileName;
+
+        auto currentItemDbRecord = SyncJournalFileRecord{};
+        if (journalForFolder->getFileRecord(absoluteItemPathName, &currentItemDbRecord) && currentItemDbRecord.isValid()) {
+            qCWarning(lcAccount()) << "skip existing item" << absoluteItemPathName;
+            return;
+        }
+
+        auto newEntry = RemoteInfo{};
+
+        LsColJob::propertyMapToRemoteInfo(properties,
+                                          serverHasMountRootProperty() ? RemotePermissions::MountedPermissionAlgorithm::UseMountRootProperty : RemotePermissions::MountedPermissionAlgorithm::WildGuessMountedSubProperty,
+                                          newEntry);
+
+        promise->emplaceResult(itemFileName, itemFileName.toStdWString(), absoluteItemPathName, newEntry);
+    });
+
+    promise->start();
+    listFolderJob->start();
+    qCInfo(lcAccount()) << "ls col job started";
+}
+
 bool Account::serverHasValidSubscription() const
 {
     return _serverHasValidSubscription;
@@ -1186,6 +1298,16 @@ bool Account::serverHasValidSubscription() const
 void Account::setServerHasValidSubscription(bool valid)
 {
     _serverHasValidSubscription = valid;
+}
+
+UpdateChannel Account::enterpriseUpdateChannel() const
+{
+    return _enterpriseUpdateChannel;
+}
+
+void Account::setEnterpriseUpdateChannel(const UpdateChannel &channel)
+{
+    _enterpriseUpdateChannel = channel;
 }
 
 void Account::updateServerSubcription()
@@ -1202,10 +1324,13 @@ void Account::updateServerSubcription()
 
 void Account::updateDesktopEnterpriseChannel()
 {
+    const auto capabilityEnterpriseChannel = UpdateChannel::fromString(_capabilities.desktopEnterpriseChannel());
+    _enterpriseUpdateChannel = capabilityEnterpriseChannel;
+
     ConfigFile currentConfig;
-    if (const auto desktopEnterpriseChannel = _capabilities.desktopEnterpriseChannel();
-        desktopEnterpriseChannel != currentConfig.desktopEnterpriseChannel()) {
-        currentConfig.setDesktopEnterpriseChannel(desktopEnterpriseChannel);
+    const auto configEnterpriseChannel = UpdateChannel::fromString(currentConfig.desktopEnterpriseChannel());
+    if (capabilityEnterpriseChannel > configEnterpriseChannel) {
+        currentConfig.setDesktopEnterpriseChannel(capabilityEnterpriseChannel.toString());
     }
 }
 

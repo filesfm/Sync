@@ -7,8 +7,8 @@ if(APPLE)
     set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum OSX deployment version")
 endif()
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED 17)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED 20)
 
 include(FeatureSummary)
 
@@ -74,9 +74,11 @@ if (NOT DEFINED PACKAGE)
     set(PACKAGE "${LINUX_PACKAGE_SHORTNAME}-client")
 endif()
 
-set( CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules )
+find_package(ECM 6.0.0 REQUIRED NO_MODULE)
+set( CMAKE_MODULE_PATH ${CMAKE_SOURCE_DIR}/cmake/modules ${ECM_MODULE_PATH} ${CMAKE_MODULE_PATH} )
 
 include(ECMCoverageOption)
+include(ECMMarkNonGuiExecutable)
 
 if(NOT CRASHREPORTER_EXECUTABLE)
     set(CRASHREPORTER_EXECUTABLE "${APPLICATION_EXECUTABLE}_crash_reporter")

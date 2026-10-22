@@ -167,6 +167,9 @@ public:
     [[nodiscard]] bool showCallNotifications() const;
     void setShowCallNotifications(bool show);
 
+    [[nodiscard]] bool showQuotaWarningNotifications() const;
+    void setShowQuotaWarningNotifications(bool show);
+
     [[nodiscard]] bool showInExplorerNavigationPane() const;
     void setShowInExplorerNavigationPane(bool show);
 
@@ -251,6 +254,13 @@ public:
     [[nodiscard]] static QString discoveredLegacyConfigPath();
     static void setDiscoveredLegacyConfigPath(const QString &discoveredLegacyConfigPath);
 
+    /// File Provider Domain UUID to Account ID mapping
+    [[nodiscard]] QString fileProviderDomainUuidFromAccountId(const QString &accountId) const;
+    void setFileProviderDomainUuidForAccountId(const QString &accountId, const QString &domainUuid);
+    [[nodiscard]] QString accountIdFromFileProviderDomainUuid(const QString &domainUuid) const;
+    void removeFileProviderDomainUuidMapping(const QString &accountId);
+    void removeFileProviderDomainMappingByDomainIdentifier(const QString domainIdentifier);
+
     /// Helper function for migration/upgrade proccess
     enum MigrationPhase {
         NotStarted,
@@ -280,6 +290,7 @@ public:
     static constexpr char optionalServerNotificationsC[] = "optionalServerNotifications";
     static constexpr char promptDeleteC[] = "promptDeleteAllFiles";
     static constexpr char showCallNotificationsC[] = "showCallNotifications";
+    static constexpr char showQuotaWarningNotificationsC[] = "showQuotaWarningNotifications";
     static constexpr char showChatNotificationsC[] = "showChatNotifications";
     static constexpr char showInExplorerNavigationPaneC[] = "showInExplorerNavigationPane";
     static constexpr char confirmExternalStorageC[] = "confirmExternalStorage";

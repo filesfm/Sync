@@ -72,8 +72,8 @@ public:
     [[nodiscard]] PathComponents parentDirComponents() const;
     [[nodiscard]] PathComponents subComponents() const &;
     PathComponents subComponents() && { removeFirst(); return std::move(*this); }
-    [[nodiscard]] QString pathRoot() const { return first(); }
-    [[nodiscard]] QString fileName() const { return last(); }
+    [[nodiscard]] QString pathRoot() const { return isEmpty() ? QString{} : first(); }
+    [[nodiscard]] QString fileName() const { return isEmpty() ? QString{} : last(); }
 };
 
 class FileModifier
@@ -134,6 +134,25 @@ public:
     struct FolderQuota {
         int64_t bytesUsed = 0;
         int64_t bytesAvailable = 5000000000;
+
+        FolderQuota() : bytesUsed{0}, bytesAvailable{5000000000} {};
+        FolderQuota(int64_t bytesUsed, int64_t bytesAvailable)
+            : bytesUsed{bytesUsed}
+            , bytesAvailable{bytesAvailable}
+        {}
+
+        QString bytesAvailableString() const {
+            if (_bytesAvailableString.isEmpty()) {
+                return QString::number(bytesAvailable);
+            }
+
+            return _bytesAvailableString;
+        }
+
+        void setBytesAvailableString(const QString &bytesAvailableString) { _bytesAvailableString = bytesAvailableString; }
+
+    private:
+        QString _bytesAvailableString = QStringLiteral("");
     };
 
     void addChild(const FileInfo &info);
@@ -570,6 +589,7 @@ public:
 class FakeFolder
 {
     QTemporaryDir _tempDir;
+    QString _tempDirLocalPath;
     DiskFileModifier _localModifier;
     // FIXME: Clarify ownership, double delete
     FakeQNAM *_fakeQnam;

@@ -52,7 +52,6 @@ OwncloudSetupPage::OwncloudSetupPage(QWidget *parent)
     const auto theme = Theme::instance();
     if (theme->overrideServerUrl().isEmpty()) {
         _ui.comboBox->hide();
-        _ui.leUrl->setPostfix(theme->wizardUrlPostfix());
         _ui.leUrl->setPlaceholderText(theme->wizardUrlHint());
     } else if (theme->multipleOverrideServers() && theme->forceOverrideServerUrl()) {
         _ui.leUrl->hide();

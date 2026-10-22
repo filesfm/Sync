@@ -252,6 +252,8 @@ private:
     bool maybeRenameForWindowsCompatibility(const QString &absoluteFileName,
                                             CSYNC_EXCLUDE_TYPE excludeReason);
 
+    [[nodiscard]] bool checkNewDeleteConflict(const SyncFileItemPtr &item) const;
+
     qint64 _lastSyncTimestamp = 0;
 
     QueryMode _queryServer = QueryMode::NormalQuery;
@@ -305,6 +307,7 @@ signals:
     void finished();
     // The root etag of this directory was fetched
     void etag(const QByteArray &, const QDateTime &time);
+    void updatedRootFolderQuota(const int64_t &bytesUsed, const int64_t &bytesAvailable);
 
 private slots:
     void setFolderQuota(const FolderQuota &folderQuota);

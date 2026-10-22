@@ -49,6 +49,51 @@ namespace Utility {
      */
     OCSYNC_EXPORT QVector<ProcessInfosForOpenFile> queryProcessInfosKeepingFileOpen(const QString &filePath);
 
+#ifdef Q_OS_WIN
+    class OCSYNC_EXPORT Handle
+    {
+    public:
+        /**
+         * A RAAI for Windows Handles
+         */
+        Handle() = default;
+        explicit Handle(HANDLE h);
+        explicit Handle(HANDLE h, std::function<void(HANDLE)> &&close);
+
+        Handle(const Handle &) = delete;
+        Handle &operator=(const Handle &) = delete;
+
+        Handle(Handle &&other)
+        {
+            std::swap(_handle, other._handle);
+            std::swap(_close, other._close);
+        }
+
+        Handle &operator=(Handle &&other)
+        {
+            if (this != &other) {
+                std::swap(_handle, other._handle);
+                std::swap(_close, other._close);
+            }
+            return *this;
+        }
+
+        ~Handle();
+
+        HANDLE &handle() { return _handle; }
+
+        void close();
+
+        explicit operator bool() const { return _handle != INVALID_HANDLE_VALUE; }
+
+        operator HANDLE() const { return _handle; }
+
+    private:
+        HANDLE _handle = INVALID_HANDLE_VALUE;
+        std::function<void(HANDLE)> _close;
+    };
+#endif
+
     OCSYNC_EXPORT int rand();
     OCSYNC_EXPORT void sleep(int sec);
     OCSYNC_EXPORT void usleep(int usec);
@@ -326,6 +371,35 @@ namespace Utility {
         Q_DISABLE_COPY(NtfsPermissionLookupRAII);
     };
 
+    /**
+     * Closes a Win32 HANDLE if the HANDLE is valid (i.e. not `INVALID_HANDLE_VALUE`).
+     */
+    struct OCSYNC_EXPORT HandleDeleter {
+        typedef HANDLE pointer; // HANDLEs are not really pointers even though they're treated as such
+
+        void operator()(HANDLE handle) const;
+    };
+
+    /**
+     * A `std::unique_ptr` that automatically closes a HANDLE.
+     */
+    using UniqueHandle = std::unique_ptr<HANDLE, HandleDeleter>;
+
+    /**
+     * Releases a pointer previously allocated by `LocalAlloc`.
+     */
+    struct OCSYNC_EXPORT LocalFreeDeleter {
+        void operator()(void *p) const;
+    };
+
+    /**
+     * A `std::unique_ptr` that automatically cleans up `P*` types (e.g. `PSID`).
+     *
+     * Use this whenever the Win32 API docs of a given function tell you to free a returned buffer
+     * by calling the `LocalFree` function.
+     */
+    template<typename T>
+    using UniqueLocalFree = std::unique_ptr<typename std::remove_pointer<T>::type, LocalFreeDeleter>;
 #endif
 }
 /** @} */ // \addtogroup
@@ -341,7 +415,7 @@ inline constexpr bool Utility::isWindows()
 
 inline constexpr bool Utility::isMac()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     return true;
 #else
     return false;

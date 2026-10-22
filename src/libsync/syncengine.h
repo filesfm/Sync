@@ -125,6 +125,8 @@ public:
     [[nodiscard]] QSharedPointer<OwncloudPropagator> getPropagator() const { return _propagator; } // for the test
     [[nodiscard]] const SyncEngine::SingleItemDiscoveryOptions &singleItemDiscoveryOptions() const;
 
+    void setFilesystemPermissionsReliable(bool reliable);
+
 public slots:
     void setSingleItemDiscoveryOptions(const OCC::SyncEngine::SingleItemDiscoveryOptions &singleItemDiscoveryOptions);
 
@@ -357,6 +359,8 @@ private:
 
     void finishSync();
 
+    bool shouldRestartSync() const;
+
     bool handleMassDeletion();
 
     void handleRemnantReadOnlyFolders();
@@ -379,6 +383,7 @@ private:
     SyncOptions _syncOptions;
 
     AnotherSyncNeeded _anotherSyncNeeded = NoFollowUpSync;
+    bool _restartedSyncAfterDiscovery = false;
 
     /** Stores the time since a job touched a file. */
     QMultiMap<QElapsedTimer, QString> _touchedFiles;
@@ -412,6 +417,8 @@ private:
     SingleItemDiscoveryOptions _singleItemDiscoveryOptions;
 
     QList<SyncFileItemPtr> _remnantReadOnlyFolders;
+
+    bool _filesystemPermissionsReliable = true;
 };
 }
 

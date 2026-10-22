@@ -163,6 +163,11 @@ QUrl Theme::statusAwayImageSource() const
     return imagePathToUrl(themeImagePath("user-status-away", 16));
 }
 
+QUrl Theme::statusBusyImageSource() const
+{
+    return imagePathToUrl(themeImagePath("user-status-busy", 16));
+}
+
 QUrl Theme::statusInvisibleImageSource() const
 {
     return imagePathToUrl(themeImagePath("user-status-invisible", 64));
@@ -196,6 +201,40 @@ QUrl Theme::syncStatusWarning() const
 QUrl Theme::folderOffline() const
 {
     return imagePathToUrl(themeImagePath("state-offline"));
+}
+
+/*
+ * neutral icons for in-app status
+ */
+
+QUrl Theme::offline() const
+{
+    return imagePathToUrl(themeImagePath("offline"));
+}
+
+QUrl Theme::ok() const
+{
+    return imagePathToUrl(themeImagePath("ok"));
+}
+
+QUrl Theme::error() const
+{
+    return imagePathToUrl(themeImagePath("error"));
+}
+
+QUrl Theme::sync() const
+{
+    return imagePathToUrl(themeImagePath("sync"));
+}
+
+QUrl Theme::pause() const
+{
+    return imagePathToUrl(themeImagePath("pause"));
+}
+
+QUrl Theme::warning() const
+{
+    return imagePathToUrl(themeImagePath("warning"));
 }
 
 QString Theme::version() const
@@ -275,7 +314,7 @@ QIcon Theme::themeIcon(const QString &name, bool sysTray) const
         }
     }
 
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     // This defines the icon as a template and enables automatic macOS color handling
     // See https://bugreports.qt.io/browse/QTBUG-42109
     cached.setIsMask(_mono && sysTray);
@@ -403,12 +442,8 @@ Theme::Theme()
 
 QString Theme::developerStringInfo() const
 {
-    // Shorten Qt's OS name: "macOS Mojave (10.14)" -> "macOS"
-    const auto osStringList = Utility::platformName().split(QLatin1Char(' '));
-    const auto osName = osStringList.at(0);
-
-    const auto devString = QString(tr("%1 Desktop Client Version %2 (%3)", "%1 is application name. %2 is the human version string. %3 is the operating system name."))
-    .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING), osName);
+    const auto devString = tr("%1 Desktop Client Version %2", "%1 is application name. %2 is the human version string.")
+    .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING));
 
     return devString;
 }
@@ -679,7 +714,6 @@ QIcon Theme::syncStateIcon(SyncResult::Status status, bool sysTray) const
         break;
     case SyncResult::Error:
     case SyncResult::SetupError:
-    // FIXME: Use state-problem once we have an icon.
     default:
         statusIcon = QLatin1String("state-error");
     }
@@ -687,9 +721,42 @@ QIcon Theme::syncStateIcon(SyncResult::Status status, bool sysTray) const
     return themeIcon(statusIcon, sysTray);
 }
 
-QIcon Theme::folderDisabledIcon() const
+// Neutral icons for the classic sync folder list
+
+QIcon Theme::folderStateIcon(SyncResult::Status status) const
 {
-    return themeIcon(QLatin1String("state-pause"));
+    // FIXME: Mind the size!
+    QString statusIcon;
+
+    switch (status) {
+    case SyncResult::Undefined:
+        // this can happen if no sync connections are configured.
+        statusIcon = QLatin1String("warning");
+        break;
+    case SyncResult::NotYetStarted:
+    case SyncResult::SyncRunning:
+        statusIcon = QLatin1String("sync");
+        break;
+    case SyncResult::SyncAbortRequested:
+    case SyncResult::Paused:
+        statusIcon = QLatin1String("pause");
+        break;
+    case SyncResult::SyncPrepare:
+    case SyncResult::Success:
+        statusIcon = QLatin1String("ok");
+        break;
+    case SyncResult::Problem:
+        statusIcon = QLatin1String("warning");
+        break;
+    case SyncResult::SetupError:
+        statusIcon = QLatin1String("offline");
+        break;
+    case SyncResult::Error:
+    default:
+        statusIcon = QLatin1String("error");
+    }
+
+    return themeIcon(statusIcon, false);
 }
 
 QIcon Theme::folderOfflineIcon(bool sysTray) const
@@ -800,12 +867,6 @@ QString Theme::customUserID() const
 }
 
 QString Theme::userIDHint() const
-{
-    return QString();
-}
-
-
-QString Theme::wizardUrlPostfix() const
 {
     return QString();
 }

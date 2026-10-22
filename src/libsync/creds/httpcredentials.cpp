@@ -51,7 +51,7 @@ protected:
     QNetworkReply *createRequest(Operation op, const QNetworkRequest &request, QIODevice *outgoingData) override
     {
         QNetworkRequest req(request);
-        if (!req.attribute(HttpCredentials::DontAddCredentialsAttribute).toBool()) {
+        if (!req.attribute(AbstractCredentials::DontAddCredentialsAttribute).toBool()) {
             if (_cred && !_cred->password().isEmpty()) {
                 QByteArray credHash = QByteArray(_cred->user().toUtf8() + ":" + _cred->password().toUtf8()).toBase64();
                 req.setRawHeader("Authorization", "Basic " + credHash);
@@ -211,7 +211,7 @@ void HttpCredentials::deleteOldKeychainEntries()
 
 bool HttpCredentials::keychainUnavailableRetryLater(QKeychain::ReadPasswordJob *incoming)
 {
-#if defined(Q_OS_UNIX) && !defined(Q_OS_MAC)
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
     Q_ASSERT(!incoming->insecureFallback()); // If insecureFallback is set, the next test would be pointless
     if (_retryOnKeyChainError && (incoming->error() == QKeychain::NoBackendAvailable
             || incoming->error() == QKeychain::OtherError)) {

@@ -30,10 +30,22 @@ struct MissingPermissionsPropfindReply : FakePropfindReply {
                                const QNetworkRequest &request, QObject *parent)
         : FakePropfindReply(remoteRootFileInfo, op, request, parent) {
         // If the propfind contains a single file without permissions, this is a server error
-        const char toRemove[] = "<oc:permissions>RDNVCKW</oc:permissions>";
+        const char toRemove[] = "<oc:permissions>GRDNVCKW</oc:permissions>";
         auto pos = payload.indexOf(toRemove, payload.size()/2);
         QVERIFY(pos > 0);
         payload.remove(pos, sizeof(toRemove) - 1);
+    }
+};
+
+// Reply that queues its own deletion so it fires inside LsColJob::finished()'s processEvents().
+struct FakePropfindReplyWithPendingDeletion : FakePropfindReply {
+    FakePropfindReplyWithPendingDeletion(FileInfo &remoteRootFileInfo, QNetworkAccessManager::Operation op,
+                                         const QNetworkRequest &request, QObject *parent)
+        : FakePropfindReply(remoteRootFileInfo, op, request, parent)
+    {
+        // respond() is queued before this timer, so it fires first; the deletion fires
+        // inside LsColJob::finished()'s processEvents() call.
+        QTimer::singleShot(0, this, &QObject::deleteLater);
     }
 };
 
@@ -88,7 +100,7 @@ private slots:
         QTest::newRow("429") << 429 << QStringLiteral("You made too many requests. Please wait and try again. If you keep seeing this, your server administrator can help.") << true;
         QTest::newRow("500") << 500 << QStringLiteral("Something went wrong on the server. Please try syncing again later, or contact your server administrator if the issue persists.") << true;
         QTest::newRow("502") << 502 << QStringLiteral("We’re having trouble connecting to the server. Please try again soon. If the issue persists, your server administrator can help you.") << true;
-        QTest::newRow("503") << 503 << QStringLiteral("The server is busy right now. Please try syncing again in a few minutes or contact your server administrator if it’s urgent.") << true;
+        QTest::newRow("503") << 503 << QStringLiteral("The server is busy right now. Please try connecting again in a few minutes or contact your server administrator if it’s urgent.") << true;
         QTest::newRow("504") << 504 << QStringLiteral("It’s taking too long to connect to the server. Please try again later. If you need help, contact your server administrator.") << true;
         QTest::newRow("505") << 505 << QStringLiteral("The server does not support the version of the connection being used. Contact your server administrator for help.") << true;
         QTest::newRow("507") << 507 << QStringLiteral("The server does not have enough space to complete your request. Please check how much quota your user has by contacting your server administrator.") << true;
@@ -198,6 +210,67 @@ private slots:
         QVERIFY(completeSpy.findItem("noetag")->_errorString.contains("File is not accessible on the server"));
         QVERIFY(completeSpy.findItem("nofileid")->_errorString.contains("File is not accessible on the server"));
         QVERIFY(completeSpy.findItem("nopermissions/A")->_errorString.contains("File is not accessible on the server"));
+    }
+
+    void testQuotaReportedAsDouble()
+    {
+        FakeFolder fakeFolder{ FileInfo() };
+        fakeFolder.remoteModifier().mkdir("doubleValue");
+        fakeFolder.remoteModifier().find("doubleValue")->folderQuota.setBytesAvailableString("2.345E+12");
+        fakeFolder.remoteModifier().mkdir("intValue");
+        fakeFolder.remoteModifier().find("intValue")->folderQuota.setBytesAvailableString("2345000000000");
+        fakeFolder.remoteModifier().mkdir("unlimited");
+        fakeFolder.remoteModifier().find("unlimited")->folderQuota.setBytesAvailableString("-3");
+        fakeFolder.remoteModifier().mkdir("invalidValue");
+        fakeFolder.remoteModifier().find("invalidValue")->folderQuota.setBytesAvailableString("maybe like, 3 GB");
+
+        ItemCompletedSpy completeSpy(fakeFolder);
+        QVERIFY(fakeFolder.syncOnce());
+
+        int64_t expectedValue = 2345000000000;
+        QCOMPARE(completeSpy.findItem("doubleValue")->_folderQuota.bytesAvailable, expectedValue);
+        QCOMPARE(completeSpy.findItem("intValue")->_folderQuota.bytesAvailable, expectedValue);
+        QCOMPARE(completeSpy.findItem("unlimited")->_folderQuota.bytesAvailable, -3);
+        QCOMPARE(completeSpy.findItem("invalidValue")->_folderQuota.bytesAvailable, -1);
+    }
+
+    // Regression: processEvents() inside LsColJob::finished() must not run before reply()
+    // is read. A pending deleteLater() draining during processEvents() zeros the QPointer
+    // and caused a SIGSEGV at reply()->request().url().path() (address 0x8).
+    void testLsColJobDoesNotCrashWhenReplyIsDeletedDuringProcessEvents()
+    {
+        FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
+        fakeFolder.remoteModifier().mkdir("B/sub");
+
+        const auto errorFolder = QStringLiteral("dav/files/admin/B");
+        fakeFolder.setServerOverride([&](QNetworkAccessManager::Operation op,
+                                         const QNetworkRequest &req,
+                                         QIODevice *) -> QNetworkReply * {
+            if (req.attribute(QNetworkRequest::CustomVerbAttribute).toString() == QStringLiteral("PROPFIND")
+                && req.url().path().endsWith(errorFolder)) {
+                return new FakePropfindReplyWithPendingDeletion(fakeFolder.remoteModifier(), op, req, nullptr);
+            }
+            return nullptr;
+        });
+
+        // The sync must complete without crashing. Discovery of B will fail gracefully
+        // because finishedWithoutError is still emitted before processEvents() runs.
+        QVERIFY(fakeFolder.syncOnce());
+        // Items under A and C must have synced normally.
+        QVERIFY(fakeFolder.currentLocalState().find("A"));
+        QVERIFY(fakeFolder.currentLocalState().find("C"));
+    }
+
+    // Verifies normal listing succeeds when the reply stays alive throughout.
+    void testLsColJobSucceedsNormally()
+    {
+        FakeFolder fakeFolder{FileInfo::A12_B12_C12_S12()};
+        fakeFolder.remoteModifier().insert("A/newfile.txt");
+
+        // Normal sync with no overrides: all PROPFIND replies remain alive.
+        QVERIFY(fakeFolder.syncOnce());
+        QVERIFY(fakeFolder.currentLocalState().find("A/newfile.txt"));
+        QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
     }
 };
 

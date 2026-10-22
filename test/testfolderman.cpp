@@ -19,6 +19,7 @@
 #include "accountstate.h"
 #include <accountmanager.h>
 #include "configfile.h"
+#include "socketapi/socketapi.h"
 #include "syncenginetestutils.h"
 #include "testhelper.h"
 
@@ -137,6 +138,7 @@ private slots:
         // the server, let's just manually set the encryption bool in the folder journal
         SyncJournalFileRecord rec;
         QVERIFY(folder->journalDb()->getFileRecord(QStringLiteral("encrypted"), &rec));
+        rec._modtime = QDateTime::currentSecsSinceEpoch();
         rec._e2eEncryptionStatus = SyncJournalFileRecord::EncryptionStatus::EncryptedMigratedV2_0;
         rec._path = QStringLiteral("encrypted").toUtf8();
         rec._type = CSyncEnums::ItemTypeDirectory;

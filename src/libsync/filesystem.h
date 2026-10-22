@@ -116,10 +116,12 @@ namespace FileSystem {
     bool OWNCLOUDSYNC_EXPORT removeRecursively(const QString &path,
                                                const std::function<void(const QString &path, bool isDir)> &onDeleted = nullptr,
                                                QStringList *errors = nullptr,
-                                               const std::function<void(const QString &path, bool isDir)> &onError = nullptr);
+                                               const std::function<void(const QString &path, bool isDir)> &onError = nullptr,
+                                               const std::function<bool (const QString &, QString *)> &customDeleteFunction = nullptr);
 
     bool OWNCLOUDSYNC_EXPORT setFolderPermissions(const QString &path,
-                                                  FileSystem::FolderPermissions permissions) noexcept;
+                                                  FileSystem::FolderPermissions permissions,
+                                                  bool * const permissionsChanged = nullptr) noexcept;
 
     bool OWNCLOUDSYNC_EXPORT isFolderReadOnly(const std::filesystem::path &path) noexcept;
 

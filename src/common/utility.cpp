@@ -132,7 +132,7 @@ static QLatin1String platform()
 {
 #if defined(Q_OS_WIN)
     return QLatin1String("Windows");
-#elif defined(Q_OS_MAC)
+#elif defined(Q_OS_MACOS)
     return QLatin1String("Macintosh");
 #elif defined(Q_OS_LINUX)
     return QLatin1String("Linux");
@@ -173,7 +173,7 @@ QByteArray Utility::friendlyUserAgentString()
 
 qint64 Utility::freeDiskSpace(const QString &path)
 {
-#if defined(Q_OS_MAC) || defined(Q_OS_FREEBSD) || defined(Q_OS_FREEBSD_KERNEL) || defined(Q_OS_NETBSD) || defined(Q_OS_OPENBSD)
+#if defined(Q_OS_MACOS) || defined(Q_OS_FREEBSD) || defined(Q_OS_FREEBSD_KERNEL) || defined(Q_OS_NETBSD) || defined(Q_OS_OPENBSD)
     struct statvfs stat;
     if (statvfs(path.toLocal8Bit().data(), &stat) == 0) {
         return (qint64)stat.f_bavail * stat.f_frsize;
@@ -312,7 +312,7 @@ QString Utility::durationToDescriptiveString2(quint64 msecs)
         return firstPart;
     }
 
-    return QCoreApplication::translate("Utility", "%1 %2").arg(firstPart, periods[p + 1].description(secondPartNum));
+    return QStringLiteral("%1 %2").arg(firstPart, periods[p + 1].description(secondPartNum));
 }
 
 QString Utility::durationToDescriptiveString1(quint64 msecs)
@@ -441,10 +441,10 @@ QString Utility::timeAgoInWords(const QDateTime &dt, const QDateTime &from)
                 if (secs < 5) {
                     return QObject::tr("now");
                 } else {
-                    return QObject::tr("1m", "one minute after activity date and time");
+                    return QObject::tr("1min", "one minute after activity date and time");
                 }
             } else {
-                return (QObject::tr("%nm", "delay in minutes after an activity", minutes));
+                return (QObject::tr("%nmin", "delay in minutes after an activity", minutes));
             }
         }
     }

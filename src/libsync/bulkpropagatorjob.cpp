@@ -241,7 +241,7 @@ void BulkPropagatorJob::triggerUpload()
 
             // If the file is currently locked, we want to retry the sync
             // when it becomes available again.
-            if (FileSystem::isFileLocked(singleFile._localPath)) {
+            if (FileSystem::isFileLocked(singleFile._localPath, FileSystem::LockMode::SharedRead)) {
                 emit propagator()->seenLockedFile(singleFile._localPath);
             }
 
@@ -639,17 +639,6 @@ QMap<QByteArray, QByteArray> BulkPropagatorJob::headers(SyncFileItemPtr item) co
 
     if (qEnvironmentVariableIntValue("OWNCLOUD_LAZYOPS")) {
         headers[QByteArrayLiteral("OC-LazyOps")] = QByteArrayLiteral("true");
-    }
-
-    if (item->_file.contains(QLatin1String(".sys.admin#recall#"))) {
-        // This is a file recall triggered by the admin.  Note: the
-        // recall list file created by the admin and downloaded by the
-        // client (.sys.admin#recall#) also falls into this category
-        // (albeit users are not supposed to mess up with it)
-
-        // We use a special tag header so that the server may decide to store this file away in some admin stage area
-        // And not directly in the user's area (which would trigger redownloads etc).
-        headers["OC-Tag"] = ".sys.admin#recall#";
     }
 
     if (!item->_etag.isEmpty() && item->_etag != "empty_etag"

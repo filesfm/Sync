@@ -84,7 +84,7 @@ public:
         ShareTypeLink = Share::TypeLink,
         ShareTypeEmail = Share::TypeEmail,
         ShareTypeRemote = Share::TypeRemote,
-        ShareTypeCircle = Share::TypeCircle,
+        ShareTypeTeam = Share::TypeTeam,
         ShareTypeRoom = Share::TypeRoom,
         ShareTypePlaceholderLink = Share::TypePlaceholderLink,
         ShareTypeInternalLink = Share::TypeInternalLink,

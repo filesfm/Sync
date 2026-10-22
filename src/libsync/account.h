@@ -12,8 +12,10 @@
 #include "clientsideencryption.h"
 #include "clientstatusreporting.h"
 #include "common/utility.h"
+#include "common/vfs.h"
 #include "syncfileitem.h"
 #include "filesfm/messaging.h"
+#include "updatechannel.h"
 
 #include <QByteArray>
 #include <QUrl>
@@ -165,6 +167,12 @@ public:
     /** Server url of the account */
     void setUrl(const QUrl &url);
     [[nodiscard]] QUrl url() const { return _url; }
+    [[nodiscard]] QUrl publicShareLinkUrl() const;
+
+    [[nodiscard]] bool isPublicShareLink() const
+    {
+        return _isPublicLink;
+    }
 
     /// Adjusts _userVisibleUrl once the host to use is discovered.
     void setUserVisibleHost(const QString &host);
@@ -204,15 +212,19 @@ public:
      * sendRequest().
      */
     QNetworkReply *sendRawRequest(const QByteArray &verb,
-        const QUrl &url,
-        QNetworkRequest req = QNetworkRequest(),
-        QIODevice *data = nullptr);
+                                  const QUrl &url,
+                                  QNetworkRequest req = QNetworkRequest(),
+                                  QIODevice *data = nullptr);
 
     QNetworkReply *sendRawRequest(const QByteArray &verb,
-        const QUrl &url, QNetworkRequest req, const QByteArray &data);
+                                  const QUrl &url,
+                                  QNetworkRequest req,
+                                  const QByteArray &data);
 
     QNetworkReply *sendRawRequest(const QByteArray &verb,
-        const QUrl &url, QNetworkRequest req, QHttpMultiPart *data);
+                                  const QUrl &url,
+                                  QNetworkRequest req,
+                                  QHttpMultiPart *data);
 
     /** Create and start network job for a simple one-off request.
      *
@@ -315,8 +327,8 @@ public:
     QString cookieJarPath();
 
     void resetNetworkAccessManager();
-    QNetworkAccessManager *networkAccessManager();
-    QSharedPointer<QNetworkAccessManager> sharedNetworkAccessManager();
+    [[nodiscard]] QNetworkAccessManager *networkAccessManager() const;
+    [[nodiscard]] QSharedPointer<QNetworkAccessManager> sharedNetworkAccessManager() const;
 
     /// Called by network jobs on credential errors, emits invalidCredentials()
     void handleInvalidCredentials();
@@ -414,6 +426,9 @@ public:
     [[nodiscard]] bool serverHasValidSubscription() const;
     void setServerHasValidSubscription(bool valid);
 
+    [[nodiscard]] UpdateChannel enterpriseUpdateChannel() const;
+    void setEnterpriseUpdateChannel(const UpdateChannel &channel);
+
     [[nodiscard]] bool enforceUseHardwareTokenEncryption() const;
 
     [[nodiscard]] QString encryptionHardwareTokenDriverPath() const;
@@ -426,6 +441,11 @@ public slots:
     void clearQNAMCache();
     void slotHandleSslErrors(QNetworkReply *, QList<QSslError>);
     void setAskUserForMnemonic(const bool ask);
+
+    void listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise,
+                          const QString &remoteSyncRootPath,
+                          const QString &subPath,
+                          SyncJournalDb *journalForFolder);
 
 signals:
     /// Emitted whenever there's network activity
@@ -485,6 +505,7 @@ signals:
     void encryptionCertificateFingerprintChanged();
     void userCertificateNeedsMigrationChanged();
 
+    void rootFolderQuotaChanged(const int64_t &usedBytes, const int64_t &availableBytes);
 protected Q_SLOTS:
     void slotCredentialsFetched();
     void slotCredentialsAsked();
@@ -526,6 +547,8 @@ public:
 #endif
     QMap<QString, QVariant> _settingsMap;
     QUrl _url;
+    QUrl _publicShareLinkUrl;
+    bool _isPublicLink = false;
 
     /** If url to use for any user-visible urls.
      *
@@ -582,6 +605,7 @@ public:
     unsigned int _uploadLimit = 0;
     unsigned int _downloadLimit = 0;
     bool _serverHasValidSubscription = false;
+    UpdateChannel _enterpriseUpdateChannel = UpdateChannel::Invalid;
     QByteArray _encryptionCertificateFingerprint;
 
     /* IMPORTANT - remove later - FIXME MS@2019-12-07 -->

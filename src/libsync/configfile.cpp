@@ -4,19 +4,16 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
-#include "config.h"
-
 #include "configfile.h"
-#include "theme.h"
-#include "version.h"
-#include "common/utility.h"
+
 #include "common/asserts.h"
-#include "version.h"
-
-#include "creds/abstractcredentials.h"
+#include "common/utility.h"
+#include "config.h"
 #include "creds/keychainchunk.h"
-
 #include "csync_exclude.h"
+#include "theme.h"
+#include "updatechannel.h"
+#include "version.h"
 
 #ifndef TOKEN_AUTH_ONLY
 #include <QWidget>
@@ -76,11 +73,6 @@ static constexpr char certPasswd[] = "http_certificatePasswd";
 
 static constexpr char serverHasValidSubscriptionC[] = "serverHasValidSubscription";
 static constexpr char desktopEnterpriseChannelName[] = "desktopEnterpriseChannel";
-
-static const QStringList defaultUpdateChannelsList { QStringLiteral("stable"), QStringLiteral("beta"), QStringLiteral("daily") };
-static const QString defaultUpdateChannelName = "stable";
-static const QStringList enterpriseUpdateChannelsList { QStringLiteral("stable"), QStringLiteral("enterprise") };
-static const QString defaultEnterpriseChannel = "enterprise";
 
 static constexpr char languageC[] = "language";
 static constexpr int deleteFilesThresholdDefaultValue = 100;
@@ -200,6 +192,19 @@ void ConfigFile::setShowCallNotifications(bool show)
 {
     QSettings settings(configFile(), QSettings::IniFormat);
     settings.setValue(showCallNotificationsC, show);
+    settings.sync();
+}
+
+bool ConfigFile::showQuotaWarningNotifications() const
+{
+    const QSettings settings(configFile(), QSettings::IniFormat);
+    return settings.value(showQuotaWarningNotificationsC, true).toBool();
+}
+
+void ConfigFile::setShowQuotaWarningNotifications(bool show)
+{
+    QSettings settings(configFile(), QSettings::IniFormat);
+    settings.setValue(showQuotaWarningNotificationsC, show);
     settings.sync();
 }
 
@@ -414,7 +419,7 @@ QString ConfigFile::excludeFileFromSystem()
         }
     }
 #endif
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     // exec path is inside the bundle
     fi.setFile(QCoreApplication::applicationDirPath(),
         QLatin1String("../Resources/") + syncExclFile);
@@ -670,14 +675,20 @@ QStringList ConfigFile::validUpdateChannels() const
     const auto isBranded = Theme::instance()->isBranded();
 
     if (isBranded) {
-        return { defaultUpdateChannelName };
+        return {UpdateChannel::defaultUpdateChannel().toString()};
     }
 
+    const QList<UpdateChannel> *channel_list = &UpdateChannel::defaultUpdateChannelList();
     if (serverHasValidSubscription()) {
-        return enterpriseUpdateChannelsList;
+        channel_list = &UpdateChannel::enterpriseUpdateChannelsList();
     }
 
-    return defaultUpdateChannelsList;
+    QStringList list;
+    for (const auto &channel : *channel_list) {
+        list.append(channel.toString());
+    }
+
+    return list;
 }
 
 QString ConfigFile::defaultUpdateChannel() const
@@ -686,25 +697,35 @@ QString ConfigFile::defaultUpdateChannel() const
     if (serverHasValidSubscription() && !isBranded) {
         if (const auto serverChannel = desktopEnterpriseChannel();
             validUpdateChannels().contains(serverChannel)) {
-            qCWarning(lcConfigFile()) << "Default update channel is" << serverChannel << "because that is the desktop enterprise channel returned by the server.";
+            qCInfo(lcConfigFile()) << "Default update channel is" << serverChannel << "because that is the desktop enterprise channel returned by the server.";
             return serverChannel;
         }
     }
 
     if (const auto currentVersionSuffix = Theme::instance()->versionSuffix();
         validUpdateChannels().contains(currentVersionSuffix) && !isBranded) {
-        qCWarning(lcConfigFile()) << "Default update channel is" << currentVersionSuffix << "because of the version suffix of the current client.";
+        qCInfo(lcConfigFile()) << "Default update channel is" << currentVersionSuffix << "because of the version suffix of the current client.";
         return currentVersionSuffix;
     }
 
-    qCWarning(lcConfigFile()) << "Default update channel is" << defaultUpdateChannelName;
-    return defaultUpdateChannelName;
+    qCInfo(lcConfigFile()) << "Default update channel is" << UpdateChannel::defaultUpdateChannel().toString();
+    return UpdateChannel::defaultUpdateChannel().toString();
 }
 
 QString ConfigFile::currentUpdateChannel() const
 {
+    if (const auto isBranded = Theme::instance()->isBranded(); isBranded) {
+        return UpdateChannel::defaultUpdateChannel().toString();
+    }
+
     QSettings settings(configFile(), QSettings::IniFormat);
-    return settings.value(QLatin1String(updateChannelC), defaultUpdateChannel()).toString();
+    const auto currentChannel = UpdateChannel::fromString(settings.value(QLatin1String(updateChannelC), defaultUpdateChannel()).toString());
+    if (serverHasValidSubscription()) {
+        const auto enterpriseChannel = UpdateChannel::fromString(desktopEnterpriseChannel());
+        return UpdateChannel::mostStable(currentChannel, enterpriseChannel).toString();
+    }
+
+    return currentChannel.toString();
 }
 
 void ConfigFile::setUpdateChannel(const QString &channel)
@@ -1038,7 +1059,7 @@ bool ConfigFile::monoIcons() const
 {
     QSettings settings(configFile(), QSettings::IniFormat);
     bool monoDefault = false; // On Mac we want bw by default
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     // OEM themes are not obliged to ship mono icons
     monoDefault = QByteArrayLiteral("Nextcloud") == QByteArrayLiteral(APPLICATION_NAME);
 #endif
@@ -1198,13 +1219,13 @@ void ConfigFile::setServerHasValidSubscription(const bool valid)
 QString ConfigFile::desktopEnterpriseChannel() const
 {
     QSettings settings(configFile(), QSettings::IniFormat);
-    return settings.value(QLatin1String(desktopEnterpriseChannelName), defaultUpdateChannelName).toString();
+    return settings.value(QLatin1String(desktopEnterpriseChannelName), UpdateChannel::defaultUpdateChannel().toString()).toString();
 }
 
 void ConfigFile::setDesktopEnterpriseChannel(const QString &channel)
 {
     QSettings settings(configFile(), QSettings::IniFormat);
-    settings.setValue(QLatin1String(desktopEnterpriseChannelName), channel);
+    settings.setValue(QLatin1String(desktopEnterpriseChannelName), UpdateChannel::fromString(channel).toString());
 }
 
 QString ConfigFile::language() const
@@ -1281,6 +1302,63 @@ void ConfigFile::setDiscoveredLegacyConfigPath(const QString &discoveredLegacyCo
     _discoveredLegacyConfigPath = discoveredLegacyConfigPath;
 }
 
+QString ConfigFile::fileProviderDomainUuidFromAccountId(const QString &accountId) const
+{
+    if (accountId.isEmpty()) {
+        return {};
+    }
+    return retrieveData(QStringLiteral("FileProviderDomainUuids"), accountId).toString();
+}
+
+void ConfigFile::setFileProviderDomainUuidForAccountId(const QString &accountId, const QString &domainUuid)
+{
+    if (accountId.isEmpty() || domainUuid.isEmpty()) {
+        return;
+    }
+
+    storeData(QStringLiteral("FileProviderDomainUuids"), accountId, domainUuid);
+    storeData(QStringLiteral("FileProviderAccountIds"), domainUuid, accountId);
+}
+
+QString ConfigFile::accountIdFromFileProviderDomainUuid(const QString &domainUuid) const
+{
+    if (domainUuid.isEmpty()) {
+        return {};
+    }
+
+    return retrieveData(QStringLiteral("FileProviderAccountIds"), domainUuid).toString();
+}
+
+void ConfigFile::removeFileProviderDomainUuidMapping(const QString &accountId)
+{
+    if (accountId.isEmpty()) {
+        return;
+    }
+
+    const QString domainUuid = fileProviderDomainUuidFromAccountId(accountId);
+
+    if (!domainUuid.isEmpty()) {
+        removeData(QStringLiteral("FileProviderAccountIds"), domainUuid);
+    }
+
+    removeData(QStringLiteral("FileProviderDomainUuids"), accountId);
+}
+
+void ConfigFile::removeFileProviderDomainMappingByDomainIdentifier(const QString domainIdentifier)
+{
+    if (domainIdentifier.isEmpty()) {
+        return;
+    }
+
+    removeData(QStringLiteral("FileProviderAccountIds"), domainIdentifier);
+
+    const QString accountIdentifier = accountIdFromFileProviderDomainUuid(domainIdentifier);
+
+    if (!accountIdentifier.isEmpty()) {
+        removeData(QStringLiteral("FileProviderDomainUuids"), accountIdentifier);
+    }
+}
+
 bool ConfigFile::isUpgrade() const
 {
     const auto currentVersion = QVersionNumber::fromString(MIRALL_VERSION_STRING);
@@ -1336,4 +1414,5 @@ ConfigFile::MigrationPhase ConfigFile::migrationPhase() const
 {
     return _migrationPhase;
 }
+
 }

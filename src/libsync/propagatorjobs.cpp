@@ -53,10 +53,31 @@ bool PropagateLocalRemove::removeRecursively(const QString &path)
     const auto fileInfo = QFileInfo{absolute};
     const auto parentFolderPath = fileInfo.dir().absolutePath();
     const auto parentPermissionsHandler = FileSystem::FilePermissionsRestore{parentFolderPath, FileSystem::FolderPermissions::ReadWrite};
+
+    qCInfo(lcPropagateLocalRemove()) << "delete" << absolute;
+
+    Q_EMIT propagator()->touchedFile(absolute);
+
     const auto success = FileSystem::removeRecursively(absolute,
                                                        [&deleted](const QString &path, bool isDir) {
                                                            // by prepending, a folder deletion may be followed by content deletions
                                                            deleted.prepend(qMakePair(path, isDir));
+                                                       },
+                                                       nullptr,
+                                                       nullptr,
+                                                       [this] (const QString &itemPath, QString *removeError) -> bool {
+                                                           auto result = false;
+
+                                                           if (_deleteToClientTrashBin.contains(itemPath)) {
+                                                               result = FileSystem::moveToTrash(itemPath, removeError);
+                                                               if (!result) {
+                                                                   result = FileSystem::remove(itemPath, removeError);
+                                                               }
+                                                           } else {
+                                                               result = FileSystem::remove(itemPath, removeError);
+                                                           }
+
+                                                           return result;
                                                        });
 
     if (!success) {
@@ -84,7 +105,7 @@ void PropagateLocalRemove::start()
     qCInfo(lcPropagateLocalRemove) << "Start propagate local remove job";
     qCInfo(lcPermanentLog) << "delete" << _item->_file << _item->_discoveryResult;
 
-    _moveToTrash = propagator()->syncOptions()._moveFilesToTrash;
+    _moveToTrash = propagator()->syncOptions()._moveFilesToTrash || _item->_wantsSpecificActions == SyncFileItem::SynchronizationOptions::MoveToClientTrashBin;
 
     if (propagator()->_abortRequested)
         return;
@@ -211,8 +232,7 @@ void PropagateLocalMkdir::startLocalMkdir()
     }
 
     if (!_item->_remotePerm.isNull() &&
-        !_item->_remotePerm.hasPermission(RemotePermissions::CanAddFile) &&
-        !_item->_remotePerm.hasPermission(RemotePermissions::CanAddSubDirectories)) {
+        !_item->_remotePerm.hasPermissionsForReadWrite()) {
         try {
             FileSystem::setFolderPermissions(newDirStr, FileSystem::FolderPermissions::ReadOnly);
         }

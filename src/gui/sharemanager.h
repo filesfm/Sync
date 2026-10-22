@@ -60,7 +60,7 @@ public:
         TypeLink = 3,
         TypeEmail = Sharee::Email,
         TypeRemote = Sharee::Federated,
-        TypeCircle = Sharee::Circle,
+        TypeTeam = Sharee::Team,
         TypeRoom = Sharee::Room,
     };
     Q_ENUM(ShareType);

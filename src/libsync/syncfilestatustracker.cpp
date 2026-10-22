@@ -21,7 +21,7 @@ static int pathCompare( const QString& lhs, const QString& rhs )
 {
     // Should match Utility::fsCasePreserving, we want don't want to pay for the runtime check on every comparison.
     return lhs.compare(rhs,
-#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
         Qt::CaseInsensitive
 #else
         Qt::CaseSensitive
@@ -32,7 +32,7 @@ static int pathCompare( const QString& lhs, const QString& rhs )
 static bool pathStartsWith( const QString& lhs, const QString& rhs )
 {
     return lhs.startsWith(rhs,
-#if defined(Q_OS_WIN) || defined(Q_OS_MAC)
+#if defined(Q_OS_WIN) || defined(Q_OS_MACOS)
         Qt::CaseInsensitive
 #else
         Qt::CaseSensitive
@@ -228,9 +228,9 @@ void SyncFileStatusTracker::slotAboutToPropagate(SyncFileItemVector &items)
 
     for (const auto &item : std::as_const(items)) {
         if (item->_instruction == CSyncEnums::CSYNC_INSTRUCTION_RENAME) {
-            qCInfo(lcStatusTracker) << "Investigating" << item->destination() << item->_status << item->_instruction << item->_direction << item->_file << item->_originalFile << item->_renameTarget;
+            qCInfo(lcStatusTracker) << "Investigating" << item->destination() << item->_status << item->_instruction << item->_direction << item->_type << item->_file << item->_originalFile << item->_renameTarget;
         } else {
-            qCInfo(lcStatusTracker) << "Investigating" << item->destination() << item->_status << item->_instruction << item->_direction;
+            qCInfo(lcStatusTracker) << "Investigating" << item->destination() << item->_status << item->_instruction << item->_direction << item->_type;
         }
         _dirtyPaths.remove(item->destination());
 

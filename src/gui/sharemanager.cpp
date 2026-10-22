@@ -309,7 +309,7 @@ void LinkShare::slotExpireDateSet(const QJsonDocument &reply, const QVariant &va
      * they use this date.
      */
     if (data.value("expiration").isString()) {
-        _expireDate = QDate::fromString(data.value("expiration").toString(), "yyyy-MM-dd 00:00:00");
+        _expireDate = QDateTime::fromString(data.value("expiration").toString(), "yyyy-MM-dd hh:mm:ss").date();
     } else {
         _expireDate = value.toDate();
     }
@@ -406,7 +406,7 @@ void UserGroupShare::slotExpireDateSet(const QJsonDocument &reply, const QVarian
      * they use this date.
      */
     if (data.value("expiration").isString()) {
-        _expireDate = QDate::fromString(data.value("expiration").toString(), "yyyy-MM-dd 00:00:00");
+        _expireDate = QDateTime::fromString(data.value("expiration").toString(), "yyyy-MM-dd hh:mm:ss").date();
     } else {
         _expireDate = value.toDate();
     }
@@ -524,6 +524,7 @@ void ShareManager::createE2EeShareJob(const QString &fullRemotePath,
                                                                          UpdateE2eeFolderUsersMetadataJob::Add,
                                                                          fullRemotePath,
                                                                          sharee->shareWith(),
+                                                                         sharee->displayName(),
                                                                          QSslCertificate{},
                                                                          this);
 
@@ -610,7 +611,7 @@ QSharedPointer<UserGroupShare> ShareManager::parseUserGroupShare(const QJsonObje
 
     QDate expireDate;
     if (data.value("expiration").isString()) {
-        expireDate = QDate::fromString(data.value("expiration").toString(), "yyyy-MM-dd 00:00:00");
+        expireDate = QDateTime::fromString(data.value("expiration").toString(), "yyyy-MM-dd hh:mm:ss").date();
     }
 
     QString note;
@@ -651,7 +652,7 @@ QSharedPointer<LinkShare> ShareManager::parseLinkShare(const QJsonObject &data) 
 
     QDate expireDate;
     if (data.value("expiration").isString()) {
-        expireDate = QDate::fromString(data.value("expiration").toString(), "yyyy-MM-dd 00:00:00");
+        expireDate = QDateTime::fromString(data.value("expiration").toString(), "yyyy-MM-dd hh:mm:ss").date();
     }
     
     QString note;

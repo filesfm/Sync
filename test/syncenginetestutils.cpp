@@ -404,7 +404,8 @@ FakePropfindReply::FakePropfindReply(FileInfo &remoteRootFileInfo, QNetworkAcces
             xml.writeEndElement(); // resourcetype
 
             auto totalSize = 0;
-            for (const auto &child : fileInfo.children.values()) {
+            const auto &allValues = fileInfo.children.values();
+            for (const auto &child : allValues) {
                 totalSize += child.size;
             }
             xml.writeTextElement(ocUri, QStringLiteral("size"), QString::number(totalSize));
@@ -416,7 +417,7 @@ FakePropfindReply::FakePropfindReply(FileInfo &remoteRootFileInfo, QNetworkAcces
         xml.writeTextElement(davUri, QStringLiteral("getlastmodified"), stringDate);
         xml.writeTextElement(davUri, QStringLiteral("getcontentlength"), QString::number(fileInfo.size));
         xml.writeTextElement(davUri, QStringLiteral("getetag"), QStringLiteral("\"%1\"").arg(QString::fromLatin1(fileInfo.etag)));
-        xml.writeTextElement(ocUri, QStringLiteral("quota-available-bytes"), std::to_string(fileInfo.folderQuota.bytesAvailable));
+        xml.writeTextElement(ocUri, QStringLiteral("quota-available-bytes"), fileInfo.folderQuota.bytesAvailableString());
         xml.writeTextElement(ocUri, QStringLiteral("quota-used-bytes"), std::to_string(fileInfo.folderQuota.bytesUsed));
         xml.writeTextElement(ocUri, QStringLiteral("permissions"), !fileInfo.permissions.isNull() ? QString(fileInfo.permissions.toString()) : fileInfo.isShared ? QStringLiteral("GSRDNVCKW") : QStringLiteral("GRDNVCKW"));
         if (fileInfo.isShared) {
@@ -573,13 +574,13 @@ QVector<FileInfo *> FakePutMultiFileReply::performMultiPart(FileInfo &remoteRoot
     const QString boundaryValue = QStringLiteral("--") + contentType.mid(boundaryPosition, contentType.length() - boundaryPosition - 1) + QStringLiteral("\r\n");
     auto stringPutPayloadRef = QString{stringPutPayload}.left(stringPutPayload.size() - 2 - boundaryValue.size());
     auto allParts = stringPutPayloadRef.split(boundaryValue, Qt::SkipEmptyParts);
-    for (const auto &onePart : allParts) {
+    for (const auto &onePart : std::as_const(allParts)) {
         auto headerEndPosition = onePart.indexOf(QStringLiteral("\r\n\r\n"));
         auto onePartHeaderPart = onePart.left(headerEndPosition);
         auto onePartBody = onePart.mid(headerEndPosition + 4, onePart.size() - headerEndPosition - 6);
         auto onePartHeaders = onePartHeaderPart.split(QStringLiteral("\r\n"));
         QMap<QString, QString> allHeaders;
-        for(const auto &oneHeader : onePartHeaders) {
+        for(const auto &oneHeader : std::as_const(onePartHeaders)) {
             auto headerParts = oneHeader.split(QStringLiteral(": "));
             allHeaders[headerParts.at(0).toLower()] = headerParts.at(1);
         }
@@ -1218,14 +1219,15 @@ void FakeQNAM::setServerVersion(const QString &version)
 }
 
 FakeFolder::FakeFolder(const FileInfo &fileTemplate, const OCC::Optional<FileInfo> &localFileInfo, const QString &remotePath)
-    : _localModifier(_tempDir.path())
+    : _tempDirLocalPath(QFileInfo(_tempDir.path()).canonicalFilePath())
+    , _localModifier(_tempDirLocalPath)
 {
     // Needs to be done once
     OCC::SyncEngine::minimumFileAgeForUpload = std::chrono::milliseconds(0);
     OCC::Logger::instance()->setLogFile(QStringLiteral("-"));
     OCC::Logger::instance()->addLogRule({ QStringLiteral("sync.httplogger=true") });
 
-    QDir rootDir { _tempDir.path() };
+    QDir rootDir { _tempDirLocalPath };
     qDebug() << "FakeFolder operating on" << rootDir;
     if (localFileInfo) {
         toDisk(rootDir, *localFileInfo);
@@ -1375,7 +1377,7 @@ void FakeFolder::setServerVersion(const QString &version)
 
 FileInfo FakeFolder::currentLocalState()
 {
-    QDir rootDir { _tempDir.path() };
+    QDir rootDir { _tempDirLocalPath };
     FileInfo rootTemplate;
     fromDisk(rootDir, rootTemplate);
     rootTemplate.fixupParentPathRecursively();
@@ -1385,7 +1387,7 @@ FileInfo FakeFolder::currentLocalState()
 QString FakeFolder::localPath() const
 {
     // SyncEngine wants a trailing slash
-    return OCC::Utility::trailingSlashPath(_tempDir.path());
+    return OCC::Utility::trailingSlashPath(_tempDirLocalPath);
 }
 
 void FakeFolder::scheduleSync()
@@ -1437,7 +1439,8 @@ void FakeFolder::toDisk(QDir &dir, const FileInfo &templateFi)
 
 void FakeFolder::fromDisk(QDir &dir, FileInfo &templateFi)
 {
-    for(const auto &diskChild : dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot)) {
+    const auto &allEntries = dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot);
+    for(const auto &diskChild : allEntries) {
         if (diskChild.isDir()) {
             QDir subDir = dir;
             subDir.cd(diskChild.fileName());

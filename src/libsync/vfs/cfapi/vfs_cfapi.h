@@ -34,11 +34,13 @@ public:
 
     OCC::Result<ConvertToPlaceholderResult, QString> updateMetadata(const SyncFileItem &syncItem, const QString &filePath, const QString &replacesFile) override;
 
-    Result<Vfs::ConvertToPlaceholderResult, QString> updatePlaceholderMarkInSync(const QString &filePath, const QByteArray &fileId) override;
+    Result<Vfs::ConvertToPlaceholderResult, QString> updatePlaceholderMarkInSync(const QString &filePath, const SyncFileItem &item) override;
 
     [[nodiscard]] bool isPlaceHolderInSync(const QString &filePath) const override;
 
     Result<void, QString> createPlaceholder(const SyncFileItem &item) override;
+    Result<void, QString> createPlaceholders(const QList<SyncFileItemPtr> &items) override;
+
     Result<void, QString> dehydratePlaceholder(const SyncFileItem &item) override;
     Result<Vfs::ConvertToPlaceholderResult, QString> convertToPlaceholder(const QString &filename, const SyncFileItem &item, const QString &replacesFile, UpdateMetadataTypes updateType) override;
 
@@ -53,6 +55,9 @@ public:
     void cancelHydration(const QString &requestId, const QString &path);
 
     int finalizeHydrationJob(const QString &requestId);
+
+    int finalizeNewPlaceholders(const QList<OCC::PlaceholderCreateInfo> &newEntries,
+                                const QString &pathString);
 
 public slots:
     void requestHydration(const QString &requestId, const QString &path);

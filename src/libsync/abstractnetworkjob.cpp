@@ -4,6 +4,15 @@
  * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
+#include "common/asserts.h"
+#include "networkjobs.h"
+#include "account.h"
+#include "owncloudpropagator.h"
+#include "httplogger.h"
+#include "accessmanager.h"
+
+#include "creds/abstractcredentials.h"
+
 #include <QLoggingCategory>
 #include <QHstsPolicy>
 #include <QNetworkAccessManager>
@@ -21,14 +30,6 @@
 #include <QMetaEnum>
 #include <QRegularExpression>
 
-#include "common/asserts.h"
-#include "networkjobs.h"
-#include "account.h"
-#include "owncloudpropagator.h"
-#include "httplogger.h"
-
-#include "creds/abstractcredentials.h"
-
 Q_DECLARE_METATYPE(QTimer *)
 
 namespace OCC {
@@ -37,7 +38,7 @@ Q_LOGGING_CATEGORY(lcNetworkJob, "nextcloud.sync.networkjob", QtInfoMsg)
 
 // If not set, it is overwritten by the Application constructor with the value from the config
 int AbstractNetworkJob::httpTimeout = qEnvironmentVariableIntValue("OWNCLOUD_TIMEOUT");
-bool AbstractNetworkJob::enableTimeout = false;
+bool AbstractNetworkJob::enableTimeout = true;
 
 AbstractNetworkJob::AbstractNetworkJob(const AccountPtr &account, const QString &path, QObject *parent)
     : QObject(parent)
@@ -117,8 +118,10 @@ QNetworkReply *AbstractNetworkJob::addTimer(QNetworkReply *reply)
     return reply;
 }
 
-QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUrl &url,
-    QNetworkRequest req, QIODevice *requestBody)
+QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb,
+                                               const QUrl &url,
+                                               QNetworkRequest req,
+                                               QIODevice *requestBody)
 {
     auto reply = _account->sendRawRequest(verb, url, req, requestBody);
     _requestBody = requestBody;
@@ -129,8 +132,10 @@ QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUr
     return reply;
 }
 
-QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb, const QUrl &url,
-    QNetworkRequest req, const QByteArray &requestBody)
+QNetworkReply *AbstractNetworkJob::sendRequest(const QByteArray &verb,
+                                               const QUrl &url,
+                                               QNetworkRequest req,
+                                               const QByteArray &requestBody)
 {
     auto reply = _account->sendRawRequest(verb, url, req, requestBody);
     _requestBody = nullptr;
@@ -268,10 +273,24 @@ void AbstractNetworkJob::slotFinished()
                     }
                     _requestBody->seek(0);
                 }
+
+                auto request = reply()->request();
+
+                if (!(requestedUrl.host() == redirectUrl.host() && requestedUrl.port() == redirectUrl.port())) {
+                    qCWarning(lcNetworkJob).nospace() << "redirect target mismatches origin, removing credentials"
+                        << " origin=" << requestedUrl.host() << ":" << requestedUrl.port()
+                        << " target=" << redirectUrl.host() << ":" << redirectUrl.port();
+
+                    auto headers = request.headers();
+                    headers.removeAll(QHttpHeaders::WellKnownHeader::Authorization);
+                    request.setHeaders(headers);
+                    request.setAttribute(AbstractCredentials::DontAddCredentialsAttribute, true);
+                }
+
                 sendRequest(
                     verb,
                     redirectUrl,
-                    reply()->request(),
+                    request,
                     _requestBody);
                 return;
             }
@@ -528,7 +547,7 @@ QString networkReplyErrorString(const QNetworkReply &reply)
             userFriendlyMessage = QObject::tr("We’re having trouble connecting to the server. Please try again soon. If the issue persists, your server administrator can help you.");
             break;
         case 503: //Service Unavailable
-            userFriendlyMessage = QObject::tr("The server is busy right now. Please try syncing again in a few minutes or contact your server administrator if it’s urgent.");
+            userFriendlyMessage = QObject::tr("The server is busy right now. Please try connecting again in a few minutes or contact your server administrator if it’s urgent.");
             break;
         case 504: //Gateway Timeout
             userFriendlyMessage = QObject::tr("It’s taking too long to connect to the server. Please try again later. If you need help, contact your server administrator.");
