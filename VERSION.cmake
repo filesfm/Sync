@@ -3,10 +3,10 @@
 # ------------------------------------
 set(MIRALL_VERSION_MAJOR 3)
 set(MIRALL_VERSION_MINOR 16)
-set(MIRALL_VERSION_PATCH 13)
+set(MIRALL_VERSION_PATCH 14)
 set(MIRALL_VERSION_YEAR  2025)
 set(MIRALL_SOVERSION     0)
-set(MIRALL_PREVERSION_HUMAN "3.16.13")  # For preversions where PATCH>=50. Use version + alpha, rc1, rc2, etc.
+set(MIRALL_PREVERSION_HUMAN "3.16.14")  # For preversions where PATCH>=50. Use version + alpha, rc1, rc2, etc.
 
 # ------------------------------------
 # Minimum supported server versions

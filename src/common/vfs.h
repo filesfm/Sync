@@ -39,6 +39,15 @@ enum class VirtualItemCreationStatus {
 };
 
 struct OCSYNC_EXPORT PlaceholderCreateInfo {
+    PlaceholderCreateInfo() = default;
+    PlaceholderCreateInfo(QString name, std::wstring stdWStringName, QString fullPath, RemoteInfo parsedProperties)
+        : name(std::move(name))
+        , stdWStringName(std::move(stdWStringName))
+        , fullPath(std::move(fullPath))
+        , parsedProperties(std::move(parsedProperties))
+    {
+    }
+
     QString name;
     std::wstring stdWStringName;
     QString fullPath;
