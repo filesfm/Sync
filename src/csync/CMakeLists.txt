@@ -122,7 +122,7 @@ if(BUILD_OWNCLOUD_OSX_BUNDLE)
     # the nextcloud executable's @rpath reference to that absolute path during
     # install -- a path nothing is ever installed to -- causing dyld to fail at
     # launch with "Library not loaded: .../build/.../lib/libnextcloud_csync.0.dylib".
-    set_target_properties(nextcloud_csync PROPERTIES
+    set_target_properties(files_fm_sync_csync PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE
         INSTALL_NAME_DIR "@rpath"
     )
