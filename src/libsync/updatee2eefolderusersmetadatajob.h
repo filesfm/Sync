@@ -33,7 +33,15 @@ public:
         QString password;
     };
     
-    explicit UpdateE2eeFolderUsersMetadataJob(const AccountPtr &account, SyncJournalDb *journalDb,const QString &syncFolderRemotePath, const Operation operation, const QString &fullRemotePath = {}, const QString &folderUserId = {}, const QSslCertificate &certificate = QSslCertificate{}, QObject *parent = nullptr);
+    explicit UpdateE2eeFolderUsersMetadataJob(const AccountPtr &account,
+                                              SyncJournalDb *journalDb,
+                                              const QString &syncFolderRemotePath,
+                                              const Operation operation,
+                                              const QString &fullRemotePath = {},
+                                              const QString &folderUserId = {},
+                                              const QString &folderUserDisplayName = {},
+                                              const QSslCertificate &certificate = QSslCertificate{},
+                                              QObject *parent = nullptr);
     ~UpdateE2eeFolderUsersMetadataJob() override = default;
 
 public:
@@ -46,7 +54,7 @@ public:
 
 public slots:
     void start(const bool keepLock = false);
-    void setUserData(const UpdateE2eeFolderUsersMetadataJob::UserData &userData);
+    void setUserData(const OCC::UpdateE2eeFolderUsersMetadataJob::UserData &userData);
 
     void setFolderToken(const QByteArray &folderToken);
     void setMetadataKeyForEncryption(const QByteArray &metadataKey);
@@ -84,6 +92,7 @@ private:
     Operation _operation = Invalid;
     QString _fullRemotePath;
     QString _folderUserId;
+    QString _folderUserDisplayName;
     QSslCertificate _folderUserCertificate;
     QByteArray _folderToken;
     // needed when re-encrypting nested folders' metadata after top-level folder's metadata has changed

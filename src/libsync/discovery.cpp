@@ -132,10 +132,6 @@ void ProcessDirectoryJob::process()
             auto &dbEntry = entries[name].dbEntry;
             dbEntry = rec;
             setupDbPinStateActions(dbEntry);
-            if (_discoveryData->_syncOptions._vfs->mode() == Vfs::WindowsCfApi && dbEntry._type == ItemTypeVirtualDirectory) {
-                // invalidate etag for virtual directories to avoid upsyncing deletions
-                dbEntry._etag = QByteArrayLiteral("_invalid_");
-            }
         })) {
         dbError();
         return;
@@ -222,8 +218,7 @@ void ProcessDirectoryJob::process()
         // If the filename starts with a . we consider it a hidden file
         // For windows, the hidden state is also discovered within the vio
         // local stat function.
-        // Recall file shall not be ignored (#4420)
-        const auto isHidden = e.localEntry.isHidden || (!f.first.isEmpty() && f.first[0] == '.' && f.first != QLatin1String(".sys.admin#recall#"));
+        const auto isHidden = e.localEntry.isHidden || (!f.first.isEmpty() && f.first[0] == '.');
 
         const auto isEncryptedFolderButE2eIsNotSetup = e.serverEntry.isValid() && e.serverEntry.isE2eEncrypted() &&
             _discoveryData->_account->e2e() && !_discoveryData->_account->e2e()->isInitialized();
@@ -675,13 +670,14 @@ void ProcessDirectoryJob::postProcessServerNew(const SyncFileItemPtr &item,
     const auto opts = _discoveryData->_syncOptions;
 
     if (item->isDirectory()) {
-        // // Turn new remote folders into virtual folders if the option is enabled.
-        // if (!localEntry.isValid() &&
-        //     opts._vfs->mode() == Vfs::WindowsCfApi &&
-        //     _pinState != PinState::AlwaysLocal &&
-        //     !FileSystem::isExcludeFile(item->_file)) {
-        //     item->_type = ItemTypeVirtualDirectory;
-        // }
+        // Turn new remote folders into virtual folders if the option is enabled.
+        if (!localEntry.isValid() &&
+            opts._vfs->mode() == Vfs::WindowsCfApi &&
+            _pinState != PinState::AlwaysLocal &&
+            !FileSystem::isExcludeFile(item->_file) &&
+            !item->isEncrypted()) {
+            item->_type = ItemTypeVirtualDirectory;
+        }
 
         _pendingAsyncJobs++;
         _discoveryData->checkSelectiveSyncNewFolder(path._server,
@@ -747,8 +743,13 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
         Q_ASSERT(item->_e2eEncryptionStatus != SyncFileItem::EncryptionStatus::NotEncrypted);
     }
     item->_encryptedFileName = [=] {
+        auto result = QString{};
+
+        if (item->_e2eEncryptionStatus == SyncFileItem::EncryptionStatus::NotEncrypted) {
+            return result;
+        }
         if (serverEntry.e2eMangledName.isEmpty()) {
-            return QString();
+            return result;
         }
 
         Q_ASSERT(_discoveryData->_remoteFolder.startsWith('/'));
@@ -756,7 +757,8 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
 
         const auto rootPath = _discoveryData->_remoteFolder.mid(1);
         Q_ASSERT(serverEntry.e2eMangledName.startsWith(rootPath));
-        return serverEntry.e2eMangledName.mid(rootPath.length());
+        result = serverEntry.e2eMangledName.mid(rootPath.length());
+        return result;
     }();
     item->_locked = serverEntry.locked;
     item->_lockOwnerDisplayName = serverEntry.lockOwnerDisplayName;
@@ -836,7 +838,7 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
             item->_direction = SyncFileItem::Down;
             item->_instruction = CSYNC_INSTRUCTION_SYNC;
             item->_type = ItemTypeVirtualFileDownload;
-        } else if (serverEntry.isValid() && !serverEntry.isDirectory && !serverEntry.remotePerm.isNull() && !serverEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
+        } else if (serverEntry.isValid() && !serverEntry.remotePerm.isNull() && !serverEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
             item->_instruction = CSYNC_INSTRUCTION_REMOVE;
             item->_direction = SyncFileItem::Down;
         } else if (dbEntry._etag != serverEntry.etag) {
@@ -927,6 +929,13 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
         qCInfo(lcDisco) << "should ignore" << item->_file << "has already a case clash conflict record" << conflictRecord.path;
 
         item->_instruction = CSYNC_INSTRUCTION_IGNORE;
+
+        return;
+    }
+
+    if (serverEntry.isValid() && !serverEntry.remotePerm.isNull() && !serverEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
+        item->_instruction = CSYNC_INSTRUCTION_IGNORE;
+        emit _discoveryData->itemDiscovered(item);
 
         return;
     }
@@ -1063,7 +1072,7 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
                 _discoveryData->findAndCancelDeletedJob(originalPath);
 
                 postProcessRename(path);
-                if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
+                if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
                     _queryServer = ParentNotChanged;
                 }
                 processFileFinalize(item, path, item->isDirectory(), item->_instruction == CSYNC_INSTRUCTION_RENAME ? NormalQuery : ParentDontExist, _queryServer);
@@ -1253,7 +1262,7 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
         item->isPermissionsInvalid = localEntry.isPermissionsInvalid;
 
         auto recurseQueryLocal = _queryLocal == ParentNotChanged ? ParentNotChanged : localEntry.isDirectory || item->_instruction == CSYNC_INSTRUCTION_RENAME ? NormalQuery : ParentDontExist;
-        if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
+        if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
             recurseQueryServer = ParentNotChanged;
         }
         processFileFinalize(item, path, recurse, recurseQueryLocal, recurseQueryServer);
@@ -1275,7 +1284,10 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
             }
         } else if (noServerEntry) {
             // Not locally, not on the server. The entry is stale!
-            qCInfo(lcDisco) << "Stale DB entry";
+            qCInfo(lcDisco).nospace() << "Stale DB entry (missing local/server entries)"
+                << " path=" << path._original
+                << " db_etag=" << dbEntry._etag
+                << " db_inode=" << dbEntry._inode;
             if (!_discoveryData->_statedb->deleteFileRecord(path._original, true)) {
                 emit _discoveryData->fatalError(tr("Error while deleting file record %1 from the database").arg(path._original), ErrorCategory::GenericError);
                 qCWarning(lcDisco) << "Failed to delete a file record from the local DB" << path._original;
@@ -1460,8 +1472,7 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
     item->_checksumHeader.clear();
     item->_size = localEntry.size;
     item->_modtime = localEntry.modtime;
-    // item->_type = localEntry.isDirectory && !localEntry.isVirtualFile ? ItemTypeDirectory : localEntry.isDirectory ? ItemTypeVirtualDirectory : localEntry.isVirtualFile ? ItemTypeVirtualFile : ItemTypeFile;
-    item->_type = localEntry.isDirectory ? ItemTypeDirectory : localEntry.isVirtualFile ? ItemTypeVirtualFile : ItemTypeFile;
+    item->_type = localEntry.isDirectory && !localEntry.isVirtualFile ? ItemTypeDirectory : localEntry.isDirectory ? ItemTypeVirtualDirectory : localEntry.isVirtualFile ? ItemTypeVirtualFile : ItemTypeFile;
     _childModified = true;
 
     if (!localEntry.caseClashConflictingName.isEmpty()) {
@@ -1692,7 +1703,7 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
                 processRename(path);
                 recurseQueryServer = etag.get() == base._etag ? ParentNotChanged : NormalQuery;
             }
-            if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
+            if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
                 recurseQueryServer = ParentNotChanged;
             }
             processFileFinalize(item, path, item->isDirectory(), NormalQuery, recurseQueryServer);
@@ -1908,10 +1919,8 @@ void ProcessDirectoryJob::processFileFinalize(
     }
 
     if (item->_type == ItemTypeVirtualDirectory) {
-        // qCDebug(lcDisco()) << "do not recurse inside a virtual folder" << item->_file;
-        // recurse = false;
-        qCInfo(lcDisco()).nospace() << "changing virtual directory to normal directory file=" << item->_file;
-        item->_type = ItemTypeDirectory;
+        qCDebug(lcDisco()) << "do not recurse inside a virtual folder" << item->_file;
+        recurse = false;
     }
 
     if (!(item->isDirectory() ||
@@ -2271,6 +2280,7 @@ DiscoverySingleDirectoryJob *ProcessDirectoryJob::startAsyncServerQuery()
     }
 
     connect(serverJob, &DiscoverySingleDirectoryJob::etag, this, &ProcessDirectoryJob::etag);
+    connect(serverJob, &DiscoverySingleDirectoryJob::firstDirectoryFileId, this, &ProcessDirectoryJob::rootFileIdReceived);
     connect(serverJob, &DiscoverySingleDirectoryJob::setfolderQuota, this, &ProcessDirectoryJob::setFolderQuota);
     _discoveryData->_currentlyActiveJobs++;
     _pendingAsyncJobs++;
@@ -2283,7 +2293,7 @@ DiscoverySingleDirectoryJob *ProcessDirectoryJob::startAsyncServerQuery()
                 const auto alreadyDownloaded = _discoveryData->_statedb->getFileRecord(_dirItem->_file, &record) && record.isValid();
                 // we need to make sure we first download all e2ee files/folders before migrating
                 _dirItem->_isEncryptedMetadataNeedUpdate = alreadyDownloaded && serverJob->encryptedMetadataNeedUpdate();
-                _dirItem->_e2eEncryptionStatus = SyncFileItem::EncryptionStatus::EncryptedMigratedV2_0;
+                _dirItem->_e2eEncryptionStatus = serverJob->currentEncryptionStatus();
                 _dirItem->_e2eEncryptionStatusRemote = serverJob->currentEncryptionStatus();
                 _dirItem->_e2eEncryptionServerCapability = serverJob->requiredEncryptionStatus();
                 qCDebug(lcDisco()) << _dirItem->_e2eEncryptionStatus << _dirItem->_e2eEncryptionServerCapability;

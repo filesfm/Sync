@@ -115,6 +115,7 @@ Folder::Folder(const FolderDefinition &definition,
     connect(_engine.data(), &SyncEngine::newBigFolder,
         this, &Folder::slotNewBigFolderDiscovered);
     connect(_engine.data(), &SyncEngine::existingFolderNowBig, this, &Folder::slotExistingFolderNowBig);
+    connect(_engine.data(), &SyncEngine::rootFileIdReceived, this, &Folder::rootFileIdReceivedFromSyncEngine);
     connect(_engine.data(), &SyncEngine::seenLockedFile, FolderMan::instance(), &FolderMan::slotSyncOnceFileUnlocks);
     connect(_engine.data(), &SyncEngine::aboutToPropagate,
         this, &Folder::slotLogPropagationStart);
@@ -1536,6 +1537,16 @@ void Folder::slotExistingFolderNowBig(const QString &folderPath)
         postExistingFolderNowBigNotification(folderPath);
         postExistingFolderNowBigActivity(folderPath);
     }
+}
+
+void Folder::rootFileIdReceivedFromSyncEngine(const qint64 fileId)
+{
+    _rootFileId = fileId;
+}
+
+bool Folder::hasFileIds(const QList<qint64> &fileIds) const
+{
+    return fileIds.contains(_rootFileId) || journalDb()->hasFileIds(fileIds);
 }
 
 void Folder::postExistingFolderNowBigNotification(const QString &folderPath)

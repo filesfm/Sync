@@ -272,6 +272,8 @@ void PropagateRemoteMove::finalize()
 
     SyncFileItem newItem(*_item);
     newItem._type = _item->_type;
+    newItem._lockToken.clear();
+    newItem._locked = SyncFileItem::LockStatus::UnlockedItem;
     if (oldRecord.isValid()) {
         newItem._checksumHeader = oldRecord._checksumHeader;
         if (newItem._size != oldRecord._fileSize) {

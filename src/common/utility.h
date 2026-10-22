@@ -49,6 +49,51 @@ namespace Utility {
      */
     OCSYNC_EXPORT QVector<ProcessInfosForOpenFile> queryProcessInfosKeepingFileOpen(const QString &filePath);
 
+#ifdef Q_OS_WIN
+    class OCSYNC_EXPORT Handle
+    {
+    public:
+        /**
+         * A RAAI for Windows Handles
+         */
+        Handle() = default;
+        explicit Handle(HANDLE h);
+        explicit Handle(HANDLE h, std::function<void(HANDLE)> &&close);
+
+        Handle(const Handle &) = delete;
+        Handle &operator=(const Handle &) = delete;
+
+        Handle(Handle &&other)
+        {
+            std::swap(_handle, other._handle);
+            std::swap(_close, other._close);
+        }
+
+        Handle &operator=(Handle &&other)
+        {
+            if (this != &other) {
+                std::swap(_handle, other._handle);
+                std::swap(_close, other._close);
+            }
+            return *this;
+        }
+
+        ~Handle();
+
+        HANDLE &handle() { return _handle; }
+
+        void close();
+
+        explicit operator bool() const { return _handle != INVALID_HANDLE_VALUE; }
+
+        operator HANDLE() const { return _handle; }
+
+    private:
+        HANDLE _handle = INVALID_HANDLE_VALUE;
+        std::function<void(HANDLE)> _close;
+    };
+#endif
+
     OCSYNC_EXPORT int rand();
     OCSYNC_EXPORT void sleep(int sec);
     OCSYNC_EXPORT void usleep(int usec);
@@ -105,6 +150,9 @@ namespace Utility {
     OCSYNC_EXPORT bool hasSystemLaunchOnStartup(const QString &appName);
     OCSYNC_EXPORT bool hasLaunchOnStartup(const QString &appName);
     OCSYNC_EXPORT void setLaunchOnStartup(const QString &appName, const QString &guiName, const bool launch);
+    /** On macOS, returns true when the login item is registered but awaiting user approval
+     *  in System Settings → General → Login Items. Always returns false on other platforms. */
+    OCSYNC_EXPORT bool launchOnStartupRequiresApproval();
     OCSYNC_EXPORT uint convertSizeToUint(size_t &convertVar);
     OCSYNC_EXPORT int convertSizeToInt(size_t &convertVar);
 

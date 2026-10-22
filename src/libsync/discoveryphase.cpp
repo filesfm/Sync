@@ -111,10 +111,6 @@ void DiscoveryPhase::checkSelectiveSyncNewFolder(const QString &path,
         return callback(false);
     }
 
-    // if (_syncOptions._vfs->mode() == Vfs::WindowsCfApi) {
-    //     return callback(true);
-    // }
-
     checkFolderSizeLimit(path, [this, path, callback](const bool bigFolder) {
         if (bigFolder) {
             // we tell the UI there is a new folder
@@ -508,9 +504,19 @@ void DiscoverySingleDirectoryJob::directoryListingIteratedSlot(const QString &fi
             }
         }
         if (map.contains("fileid"_L1)) {
+            // this is from the "oc:fileid" property, this is the plain ID without any special format (e.g. "2")
             _localFileId = map.value("fileid"_L1).toUtf8();
+
+            bool ok = false;
+            if (qint64 numericFileId = _localFileId.toLongLong(&ok, 10); ok) {
+                qCDebug(lcDiscovery).nospace() << "received numericFileId=" << numericFileId;
+                emit firstDirectoryFileId(numericFileId);
+            } else {
+                qCWarning(lcDiscovery).nospace() << "conversion to qint64 failed _localFileId=" << _localFileId;
+            }
         }
         if (map.contains("id"_L1)) {
+            // this is from the "oc:id" property, the format is e.g. "00000002oc123xyz987e"
             _fileId = map.value("id"_L1).toUtf8();
         }
         if (map.contains("is-encrypted"_L1) && map.value("is-encrypted"_L1) == "1"_L1) {
@@ -545,8 +551,9 @@ void DiscoverySingleDirectoryJob::directoryListingIteratedSlot(const QString &fi
         LsColJob::propertyMapToRemoteInfo(map,
                                           _account->serverHasMountRootProperty() ? RemotePermissions::MountedPermissionAlgorithm::UseMountRootProperty : RemotePermissions::MountedPermissionAlgorithm::WildGuessMountedSubProperty,
                                           result);
-        if (result.isDirectory)
+        if (result.isDirectory) {
             result.size = 0;
+        }
 
         _results.push_back(std::move(result));
     }
@@ -646,19 +653,36 @@ void DiscoverySingleDirectoryJob::metadataReceived(const QJsonDocument &json, in
         }
     }
 
-    if (job->signature().isEmpty()) {
-        qCDebug(lcDiscovery) << "Initial signature is empty.";
-        _account->reportClientStatus(OCC::ClientStatusReportingStatus::E2EeError_GeneralError);
-        emit finished(HttpError{0, tr("Encrypted metadata setup error: initial signature from server is empty.")});
-        deleteLater();
-        return;
+    const auto jsonMetadata = statusCode == 404 ? QByteArray{} : json.toJson(QJsonDocument::Compact);
+    const auto jsonMetadataVersion = FolderMetadata::setupVersionFromExistingMetadata(jsonMetadata);
+    switch (jsonMetadataVersion) {
+    case FolderMetadata::MetadataVersion::VersionUndefined:
+    case FolderMetadata::MetadataVersion::Version1:
+    case FolderMetadata::MetadataVersion::Version1_2:
+        break;
+    case FolderMetadata::MetadataVersion::Version2_0:
+    case FolderMetadata::MetadataVersion::Version2_1:
+        if (job->signature().isEmpty()) {
+            qCDebug(lcDiscovery) << "Initial signature is empty.";
+            _account->reportClientStatus(OCC::ClientStatusReportingStatus::E2EeError_GeneralError);
+            emit finished(HttpError{0, tr("Encrypted metadata setup error: initial signature from server is empty.")});
+            deleteLater();
+            return;
+        }
+        break;
     }
 
+    const auto rootEncryptedFolderInfo = RootEncryptedFolderInfo{Utility::fullRemotePathToRemoteSyncRootRelative(topLevelFolderPath, _remoteRootFolderPath)};
+
+    const auto folderType = _topLevelE2eeFolderPaths.contains(_subPath) ? FolderMetadata::FolderType::Root : FolderMetadata::FolderType::Nested;
+    Q_ASSERT((folderType == FolderMetadata::FolderType::Root) == (rootEncryptedFolderInfo.path == QStringLiteral("/")));
+
     const auto e2EeFolderMetadata = new FolderMetadata(_account,
-                                                 _remoteRootFolderPath,
-                                                 statusCode == 404 ? QByteArray{} : json.toJson(QJsonDocument::Compact),
-                                                 RootEncryptedFolderInfo(Utility::fullRemotePathToRemoteSyncRootRelative(topLevelFolderPath, _remoteRootFolderPath)),
-                                                 job->signature());
+                                                       _remoteRootFolderPath,
+                                                       jsonMetadata,
+                                                       rootEncryptedFolderInfo,
+                                                       job->signature(),
+                                                       folderType);
     connect(e2EeFolderMetadata, &FolderMetadata::setupComplete, this, [this, e2EeFolderMetadata] {
         e2EeFolderMetadata->deleteLater();
         if (!e2EeFolderMetadata->isValid()) {

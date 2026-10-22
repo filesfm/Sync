@@ -312,6 +312,9 @@ public:
     void blacklistPath(const QString &path);
     void migrateBlackListPath(const QString &legacyPath);
 
+    /// whether the current folder contains any of the passed fileIds
+    [[nodiscard]] bool hasFileIds(const QList<qint64> &fileIds) const;
+
 signals:
     void syncStateChange();
     void syncStarted();
@@ -429,6 +432,8 @@ private slots:
 
     void slotNewBigFolderDiscovered(const QString &, bool isExternal);
     void slotExistingFolderNowBig(const QString &folderPath);
+
+    void rootFileIdReceivedFromSyncEngine(qint64 fileId);
 
     void slotLogPropagationStart();
 
@@ -559,6 +564,8 @@ private:
     bool _hasSwitchedToVfs = false;
 
     bool _silenceErrorsUntilNextSync = false;
+
+    qint64 _rootFileId = 0;
 
     /**
      * Watches this folder's local directory for changes.

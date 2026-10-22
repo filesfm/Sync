@@ -70,6 +70,12 @@ private slots:
 
     void testLaunchOnStartup()
     {
+#ifdef Q_OS_MACOS
+        // The macOS implementation uses SMAppService, which operates on the running app's
+        // system-level login item registration and requires a properly signed app bundle.
+        // Neither condition holds in a unit test runner, so this test is not applicable on macOS.
+        QSKIP("SMAppService-based launch-on-startup cannot be unit-tested outside a signed app bundle.");
+#endif
         QString postfix = QString::number(OCC::Utility::rand());
 
         const QString appName = QString::fromLatin1("testLaunchOnStartup.%1").arg(postfix);
@@ -347,6 +353,47 @@ private slots:
             QCOMPARE(fullRepotePathResult, fullRemotePathOriginal);
         }
     }
+
+#if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
+    void testSetupFavLink()
+    {
+        // avoid polluting user bookmarks
+        const auto originalHome = qgetenv("HOME");
+        QTemporaryDir tempHome;
+        qputenv("HOME", tempHome.path().toLocal8Bit());
+        QCOMPARE(QDir::homePath(), tempHome.path());
+
+        QDir(tempHome.path()).mkpath(".config/gtk-3.0");
+        const auto bookmarksFilePath = tempHome.filePath(".config/gtk-3.0/bookmarks");
+
+        const auto countEntries = [&bookmarksFilePath](const QString &expectedEntry) -> qsizetype {
+            QFile gtkBookmarks(bookmarksFilePath);
+            if (!gtkBookmarks.open(QFile::ReadOnly)) {
+                qCritical() << "opening file" << bookmarksFilePath << "failed with" << gtkBookmarks.errorString();
+                return -1;
+            }
+
+            const auto places = gtkBookmarks.readAll().split('\n');
+            return places.count(expectedEntry);
+        };
+
+        const auto setupAndCheckFavLink = [&countEntries](const QString &folder, const QString &expectedEntry) -> void {
+            OCC::Utility::setupFavLink(folder);
+            QCOMPARE(countEntries(expectedEntry), 1);
+            // ensure duplicates aren't created
+            OCC::Utility::setupFavLink(folder);
+            QCOMPARE(countEntries(expectedEntry), 1);
+        };
+
+        setupAndCheckFavLink("/tmp/test", "file:///tmp/test");
+        setupAndCheckFavLink("/tmp/test with spaces", "file:///tmp/test%20with%20spaces");
+        setupAndCheckFavLink("/tmp/special! characters & more/subpath with space", "file:///tmp/special!%20characters%20&%20more/subpath%20with%20space");
+
+        // restore defaults for other tests
+        qputenv("HOME", originalHome);
+        QCOMPARE(QDir::homePath(), originalHome);
+    }
+#endif
 };
 
 QTEST_GUILESS_MAIN(TestUtility)

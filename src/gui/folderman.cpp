@@ -2079,6 +2079,26 @@ void FolderMan::slotProcessFilesPushNotification(Account *account)
     }
 }
 
+void FolderMan::slotProcessFileIdsPushNotification(Account *account, const QList<qint64> &fileIds)
+{
+    qCDebug(lcFolderMan).nospace() << "received notify_file_id push notification account=" << account->displayName() << " fileIds=" << fileIds;
+
+    for (auto folder : std::as_const(_folderMap)) {
+        // Just run on the folders that belong to this account
+        if (folder->accountState()->account() != account) {
+            continue;
+        }
+
+        if (!folder->hasFileIds(fileIds)) {
+            qCDebug(lcFolderMan).nospace() << "no matching file ids, ignoring folder=" << folder->alias() << " account=" << account->displayName();
+            continue;
+        }
+
+        qCInfo(lcFolderMan).nospace() << "scheduling sync folder=" << folder->alias() << " account=" << account->displayName() << " reason=notify_file_id";
+        scheduleFolder(folder);
+    }
+}
+
 void FolderMan::slotConnectToPushNotifications(const AccountPtr &account)
 {
     const auto pushNotifications = account->pushNotifications();
@@ -2086,6 +2106,7 @@ void FolderMan::slotConnectToPushNotifications(const AccountPtr &account)
     if (pushNotificationsFilesReady(account)) {
         qCInfo(lcFolderMan) << "Push notifications ready";
         connect(pushNotifications, &PushNotifications::filesChanged, this, &FolderMan::slotProcessFilesPushNotification, Qt::UniqueConnection);
+        connect(pushNotifications, &PushNotifications::fileIdsChanged, this, &FolderMan::slotProcessFileIdsPushNotification, Qt::UniqueConnection);
     }
 }
 

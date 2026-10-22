@@ -15,6 +15,8 @@
 #include <QTest>
 #include <QSignalSpy>
 
+using namespace Qt::StringLiterals;
+
 class TestLockFile : public QObject
 {
     Q_OBJECT
@@ -793,6 +795,173 @@ private slots:
         QVERIFY(fakeFolder.syncOnce());
 
         QCOMPARE(lockFileDetectedNewlyUploadedSpy.count(), 1);
+    }
+
+    void testLockFile_verifyE2eeFilesUseCorrectPath()
+    {
+        const auto e2eeRoot = QStringLiteral("encrypted");
+        const auto cleartextFilePath = QStringLiteral("encrypted/document.odt");
+        const auto encryptedFilePath = QStringLiteral("encrypted/1e4c70c057994f9daf7bbab71b046d5b");
+
+        FakeFolder fakeFolder{FileInfo{}};
+
+        fakeFolder.localModifier().mkdir(e2eeRoot);
+        fakeFolder.remoteModifier().mkdir(e2eeRoot);
+        fakeFolder.localModifier().insert(cleartextFilePath);
+
+        QVERIFY(fakeFolder.syncOnce());
+
+        // modify local entry for the file to be locked to pretend it's E2E encrypted
+        OCC::SyncJournalFileRecord record;
+        QVERIFY(fakeFolder.syncJournal().getFileRecord(cleartextFilePath, &record));
+        record._e2eEncryptionStatus = OCC::SyncJournalFileRecord::EncryptionStatus::EncryptedMigratedV2_0;
+        record._e2eMangledName = encryptedFilePath.toUtf8();
+        record._path = cleartextFilePath.toUtf8();
+        QVERIFY(fakeFolder.syncJournal().setFileRecord(record));
+
+        // do something similar on the remote -- the encrypted file has a different name
+        fakeFolder.remoteModifier().rename(cleartextFilePath, encryptedFilePath);
+        fakeFolder.remoteModifier().setE2EE(encryptedFilePath, true);
+
+        // another sync run should not fail now, even with our pretended E2Ee setup :-)
+        QVERIFY(fakeFolder.syncOnce());
+
+        auto job = new OCC::LockFileJob(fakeFolder.account(),
+                                        &fakeFolder.syncJournal(),
+                                        QStringLiteral("/") + cleartextFilePath,
+                                        QStringLiteral("/"),
+                                        fakeFolder.localPath(),
+                                        {},
+                                        OCC::SyncFileItem::LockStatus::LockedItem,
+                                        OCC::SyncFileItem::LockOwnerType::UserLock);
+
+        QSignalSpy jobSuccess(job, &OCC::LockFileJob::finishedWithoutError);
+        QSignalSpy jobFailure(job, &OCC::LockFileJob::finishedWithError);
+
+        QString lockRequestPath;
+        connect(fakeFolder.networkAccessManager(), &QNetworkAccessManager::finished, [&lockRequestPath](QNetworkReply *reply) {
+            const auto request = reply->request();
+            if (request.attribute(QNetworkRequest::CustomVerbAttribute).toString() != QStringLiteral("LOCK")) {
+                return;
+            }
+
+            QVERIFY(lockRequestPath.isEmpty());
+            lockRequestPath = request.url().path();
+        });
+
+        job->start();
+
+        QVERIFY(jobSuccess.wait());
+        QCOMPARE(jobFailure.count(), 0);
+
+        // expect the path of the LOCK request to have used the mangled name
+        QVERIFY(!lockRequestPath.isEmpty());
+        QVERIFY(lockRequestPath.contains(encryptedFilePath));
+        QVERIFY(!lockRequestPath.contains(cleartextFilePath));
+
+        auto fileRecord = OCC::SyncJournalFileRecord{};
+        QVERIFY(fakeFolder.syncJournal().getFileRecord(cleartextFilePath, &fileRecord));
+        QVERIFY(fileRecord.isE2eEncrypted());
+        QCOMPARE(fileRecord.e2eMangledName(), encryptedFilePath);
+        QCOMPARE(fileRecord._lockstate._locked, true);
+        QCOMPARE(fileRecord._lockstate._lockEditorApp, QString{});
+        QCOMPARE(fileRecord._lockstate._lockOwnerDisplayName, QStringLiteral("John Doe"));
+        QCOMPARE(fileRecord._lockstate._lockOwnerId, QStringLiteral("admin"));
+        QCOMPARE(fileRecord._lockstate._lockOwnerType, static_cast<qint64>(OCC::SyncFileItem::LockOwnerType::UserLock));
+        QCOMPARE(fileRecord._lockstate._lockTime, 1234560);
+        QCOMPARE(fileRecord._lockstate._lockTimeout, 1800);
+
+        QVERIFY(fakeFolder.syncOnce());
+    }
+
+    void testUploadLockedFilesInDeletedFolder()
+    {
+        FakeFolder fakeFolder{FileInfo{}};
+        QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
+
+        int nGET = 0, nPUT = 0;
+        auto verifyLackOfTokenIfHeader = false;
+        QObject parent;
+        fakeFolder.setServerOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *outgoingData) -> QNetworkReply * {
+            Q_UNUSED(outgoingData)
+            Q_UNUSED(request)
+
+            if (op == QNetworkAccessManager::PutOperation) {
+                ++nPUT;
+                if (verifyLackOfTokenIfHeader) {
+                    if (request.hasRawHeader("If")) {
+                        Q_ASSERT(false);
+                    }
+                }
+            } else if (op == QNetworkAccessManager::GetOperation) {
+                ++nGET;
+            }
+
+            return nullptr;
+        });
+
+        ItemCompletedSpy completeSpy(fakeFolder);
+
+        const auto cleanUpHelper = [&nGET, &nPUT, &completeSpy] () {
+            nGET = 0;
+            nPUT = 0;
+            completeSpy.clear();
+        };
+
+        fakeFolder.localModifier().mkdir(u"parent"_s);
+
+        cleanUpHelper();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(nGET, 0);
+        QCOMPARE(nPUT, 0);
+
+        fakeFolder.localModifier().mkdir(u"parent/child"_s);
+
+        cleanUpHelper();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(nGET, 0);
+        QCOMPARE(nPUT, 0);
+
+        fakeFolder.localModifier().insert(u"parent/child/hello.odt"_s);
+
+        cleanUpHelper();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(nGET, 0);
+        QCOMPARE(nPUT, 1);
+
+        OCC::SyncJournalFileRecord record;
+        QVERIFY(fakeFolder.syncJournal().getFileRecord(u"parent/child/hello.odt"_s, &record));
+        QVERIFY(record.isValid());
+        record._lockstate._locked = true;
+        record._lockstate._lockToken = u"azertyuiop"_s;
+        record._lockstate._lockOwnerType = static_cast<qint64>(OCC::SyncFileItem::LockOwnerType::TokenLock);
+        QVERIFY(fakeFolder.syncJournal().setFileRecord(record));
+        qDebug() << fakeFolder.localPath() + u"parent/child/.~lock.hello.odt#"_s;
+        QFile newLockFile(fakeFolder.localPath() + u"parent/child/.~lock.hello.odt#"_s);
+        const auto openResult = newLockFile.open(QFile::OpenModeFlag::NewOnly);
+        if (!openResult) {
+            qWarning() << "Failed to create lock file:" << fakeFolder.localPath() + u"parent/child/.~lock.hello.odt#"_s;
+            return;
+        }
+        OCC::FileSystem::setFileHidden(fakeFolder.localPath() + u"parent/child/.~lock.hello.odt#"_s, true);
+
+        fakeFolder.remoteModifier().remove(u"parent/child"_s);
+        fakeFolder.localModifier().insert(u"parent/child/hello.odt"_s, 128);
+
+        cleanUpHelper();
+        fakeFolder.syncEngine().setLocalDiscoveryOptions(OCC::LocalDiscoveryStyle::DatabaseAndFilesystem, {u"parent"_s, u"parent/child"_s, u"parent/child/.~lock.hello.odt#"_s, u"parent/child/hello.odt"_s});
+        QVERIFY(!fakeFolder.syncOnce());
+        QCOMPARE(nGET, 0);
+        QCOMPARE(nPUT, 1);
+        fakeFolder.syncJournal().wipeErrorBlacklistCategory(OCC::SyncJournalErrorBlacklistRecord::Normal);
+
+        fakeFolder.remoteModifier().mkdir(u"parent/child"_s);
+        cleanUpHelper();
+        fakeFolder.syncEngine().setLocalDiscoveryOptions(OCC::LocalDiscoveryStyle::DatabaseAndFilesystem, {u"parent"_s, u"parent/child"_s, u"parent/child/.~lock.hello.odt#"_s, u"parent/child/hello.odt"_s});
+        verifyLackOfTokenIfHeader = true;
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(nGET, 0);
+        QCOMPARE(nPUT, 1);
     }
 };
 

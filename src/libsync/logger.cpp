@@ -130,7 +130,7 @@ void Logger::doLog(QtMsgType type, const QMessageLogContext &ctx, const QString 
     {
         QMutexLocker lock(&_mutex);
 
-        if (linesCounter >= MaxLogLinesCount) {
+        if (!logFile().isEmpty() && linesCounter >= MaxLogLinesCount) {
             linesCounter = 0;
             if (_logstream) {
                 _logstream->flush();
@@ -282,6 +282,7 @@ void Logger::dumpCrashLog()
             out << _crashLog[(_crashLogIndex + i) % CrashLogSize] << QLatin1Char('\n');
         }
     }
+    qDebug() << "crash log written in" << logFile.fileName();
 }
 
 void Logger::enterNextLogFileNoLock(const QString &baseFileName, LogType type)
@@ -371,13 +372,17 @@ void Logger::setLogFileNoLock(const QString &name)
     }
 
     if (!openSucceeded) {
-        postGuiMessage(tr("Error"),
-                       QString(tr("<nobr>File \"%1\"<br/>cannot be opened for writing.<br/><br/>"
-                                  "The log output <b>cannot</b> be saved!</nobr>"))
-                           .arg(name));
+        if (!_didShowLogWriteError) {
+            _didShowLogWriteError = true;
+            postGuiMessage(tr("Error"),
+                           QString(tr("<nobr>File \"%1\"<br/>cannot be opened for writing.<br/><br/>"
+                                      "The log output <b>cannot</b> be saved!</nobr>"))
+                               .arg(name));
+        }
         return;
     }
 
+    _didShowLogWriteError = false;
     _logstream.reset(new QTextStream(&_logFile));
 }
 
@@ -401,13 +406,17 @@ void Logger::setPermanentDeleteLogFileNoLock(const QString &name)
     }
 
     if (!openSucceeded) {
-        postGuiMessage(tr("Error"),
-                       QString(tr("<nobr>File \"%1\"<br/>cannot be opened for writing.<br/><br/>"
-                                  "The log output <b>cannot</b> be saved!</nobr>"))
-                           .arg(name));
+        if (!_didShowLogWriteError) {
+            _didShowLogWriteError = true;
+            postGuiMessage(tr("Error"),
+                           QString(tr("<nobr>File \"%1\"<br/>cannot be opened for writing.<br/><br/>"
+                                      "The log output <b>cannot</b> be saved!</nobr>"))
+                               .arg(name));
+        }
         return;
     }
 
+    _didShowLogWriteError = false;
     _permanentDeleteLogStream.reset(new QTextStream(&_permanentDeleteLogFile));
 }
 

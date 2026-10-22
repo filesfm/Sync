@@ -100,6 +100,7 @@ public:
         ListAllTopLevelE2eeFoldersStatusLessThanQuery,
         FolderUpdateInvalidEncryptionStatus,
         FileUpdateInvalidEncryptionStatus,
+        HasFileIdQuery,
 
         PreparedQueryCount
     };
