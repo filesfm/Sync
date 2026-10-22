@@ -130,7 +130,7 @@ private slots:
             const auto encryptedMetadataKey = QByteArray::fromBase64(folderUserObject.value("encryptedMetadataKey").toString().toUtf8());
 
             if (!encryptedMetadataKey.isEmpty()) {
-                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey, _account->e2e()->certificateSha256Fingerprint());
+                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey);
                 if (decryptedMetadataKey.isEmpty()) {
                     break;
                 }
@@ -176,7 +176,7 @@ private slots:
 
         QScopedPointer<FolderMetadata> metadataFromJson(new FolderMetadata(_account, "/",
             ocsDoc.toJson(),
-            RootEncryptedFolderInfo::makeDefault(), signature, FolderMetadata::FolderType::Root));
+            RootEncryptedFolderInfo::makeDefault(), signature));
         QSignalSpy metadataSetupExistingCompleteSpy(metadataFromJson.data(), &FolderMetadata::setupComplete);
         metadataSetupExistingCompleteSpy.wait();
         QCOMPARE(metadataSetupExistingCompleteSpy.count(), 1);
@@ -208,15 +208,14 @@ private slots:
         QScopedPointer<FolderMetadata> metadataFromJson(new FolderMetadata(_account, "/",
                                                                            ocsDoc.toJson(),
                                                                            RootEncryptedFolderInfo::makeDefault(),
-                                                                           emptySignature,
-                                                                           FolderMetadata::FolderType::Root));
+                                                                           emptySignature));
 
         QSignalSpy metadataSetupExistingCompleteSpy(metadataFromJson.data(), &FolderMetadata::setupComplete);
         metadataSetupExistingCompleteSpy.wait();
         QCOMPARE(metadataSetupExistingCompleteSpy.count(), 1);
 
         QVERIFY(metadataFromJson->metadataSignature().isEmpty());
-        QVERIFY(metadataFromJson->binaryMetadataKeyForDecryption().isEmpty());
+        QVERIFY(metadataFromJson->metadataKeyForDecryption().isEmpty());
         QVERIFY(!metadataFromJson->isValid());
     }
 
@@ -270,7 +269,7 @@ private slots:
             const auto encryptedMetadataKey = QByteArray::fromBase64(folderUserObject.value("encryptedMetadataKey").toString().toUtf8());
 
             if (!encryptedMetadataKey.isEmpty()) {
-                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey, _account->e2e()->certificateSha256Fingerprint());
+                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey);
                 if (decryptedMetadataKey.isEmpty()) {
                     break;
                 }
@@ -315,7 +314,7 @@ private slots:
         QJsonDocument ocsDoc =
             QJsonDocument::fromJson(QStringLiteral("{\"ocs\": {\"data\": {\"meta-data\": \"%1\"}}}").arg(QString::fromUtf8(encryptedMetadataCopy)).toUtf8());
 
-        QScopedPointer<FolderMetadata> metadataFromJsonForSecondUser(new FolderMetadata(_secondAccount, "/", ocsDoc.toJson(), RootEncryptedFolderInfo::makeDefault(), signature, FolderMetadata::FolderType::Root));
+        QScopedPointer<FolderMetadata> metadataFromJsonForSecondUser(new FolderMetadata(_secondAccount, "/", ocsDoc.toJson(), RootEncryptedFolderInfo::makeDefault(), signature));
         QSignalSpy metadataSetupExistingCompleteSpy(metadataFromJsonForSecondUser.data(), &FolderMetadata::setupComplete);
         metadataSetupExistingCompleteSpy.wait();
         QCOMPARE(metadataSetupExistingCompleteSpy.count(), 1);
@@ -339,12 +338,10 @@ private slots:
         QJsonDocument ocsDocFromSecondUser = QJsonDocument::fromJson(
             QStringLiteral("{\"ocs\": {\"data\": {\"meta-data\": \"%1\"}}}").arg(QString::fromUtf8(encryptedMetadataFromSecondUser)).toUtf8());
 
-        QScopedPointer<FolderMetadata> metadataFromJsonForFirstUserToCheckCrossSharing(new FolderMetadata(_account,
-                                                                                                          "/",
+        QScopedPointer<FolderMetadata> metadataFromJsonForFirstUserToCheckCrossSharing(new FolderMetadata(_account, "/",
                                                                                                           ocsDocFromSecondUser.toJson(),
                                                                                                           RootEncryptedFolderInfo::makeDefault(),
-                                                                                                          signatureAfterSecondUserModification,
-                                                                                                          FolderMetadata::FolderType::Root));
+                                                                                                          signatureAfterSecondUserModification));
         QSignalSpy metadataSetupForCrossSharingCompleteSpy(metadataFromJsonForFirstUserToCheckCrossSharing.data(), &FolderMetadata::setupComplete);
         metadataSetupForCrossSharingCompleteSpy.wait();
         QCOMPARE(metadataSetupForCrossSharingCompleteSpy.count(), 1);
@@ -373,7 +370,7 @@ private slots:
             const auto encryptedMetadataKey = QByteArray::fromBase64(folderUserObject.value("encryptedMetadataKey").toString().toUtf8());
 
             if (!encryptedMetadataKey.isEmpty()) {
-                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey, _account->e2e()->certificateSha256Fingerprint());
+                const auto decryptedMetadataKey = metadata->decryptDataWithPrivateKey(encryptedMetadataKey);
                 if (decryptedMetadataKey.isEmpty()) {
                     break;
                 }

@@ -222,7 +222,8 @@ void ProcessDirectoryJob::process()
         // If the filename starts with a . we consider it a hidden file
         // For windows, the hidden state is also discovered within the vio
         // local stat function.
-        const auto isHidden = e.localEntry.isHidden || (!f.first.isEmpty() && f.first[0] == '.');
+        // Recall file shall not be ignored (#4420)
+        const auto isHidden = e.localEntry.isHidden || (!f.first.isEmpty() && f.first[0] == '.' && f.first != QLatin1String(".sys.admin#recall#"));
 
         const auto isEncryptedFolderButE2eIsNotSetup = e.serverEntry.isValid() && e.serverEntry.isE2eEncrypted() &&
             _discoveryData->_account->e2e() && !_discoveryData->_account->e2e()->isInitialized();
@@ -746,13 +747,8 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
         Q_ASSERT(item->_e2eEncryptionStatus != SyncFileItem::EncryptionStatus::NotEncrypted);
     }
     item->_encryptedFileName = [=] {
-        auto result = QString{};
-
-        if (item->_e2eEncryptionStatus == SyncFileItem::EncryptionStatus::NotEncrypted) {
-            return result;
-        }
         if (serverEntry.e2eMangledName.isEmpty()) {
-            return result;
+            return QString();
         }
 
         Q_ASSERT(_discoveryData->_remoteFolder.startsWith('/'));
@@ -760,8 +756,7 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
 
         const auto rootPath = _discoveryData->_remoteFolder.mid(1);
         Q_ASSERT(serverEntry.e2eMangledName.startsWith(rootPath));
-        result = serverEntry.e2eMangledName.mid(rootPath.length());
-        return result;
+        return serverEntry.e2eMangledName.mid(rootPath.length());
     }();
     item->_locked = serverEntry.locked;
     item->_lockOwnerDisplayName = serverEntry.lockOwnerDisplayName;
@@ -1068,7 +1063,7 @@ void ProcessDirectoryJob::processFileAnalyzeRemoteInfo(const SyncFileItemPtr &it
                 _discoveryData->findAndCancelDeletedJob(originalPath);
 
                 postProcessRename(path);
-                if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
+                if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
                     _queryServer = ParentNotChanged;
                 }
                 processFileFinalize(item, path, item->isDirectory(), item->_instruction == CSYNC_INSTRUCTION_RENAME ? NormalQuery : ParentDontExist, _queryServer);
@@ -1258,7 +1253,7 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
         item->isPermissionsInvalid = localEntry.isPermissionsInvalid;
 
         auto recurseQueryLocal = _queryLocal == ParentNotChanged ? ParentNotChanged : localEntry.isDirectory || item->_instruction == CSYNC_INSTRUCTION_RENAME ? NormalQuery : ParentDontExist;
-        if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
+        if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
             recurseQueryServer = ParentNotChanged;
         }
         processFileFinalize(item, path, recurse, recurseQueryLocal, recurseQueryServer);
@@ -1697,7 +1692,7 @@ void ProcessDirectoryJob::processFileAnalyzeLocalInfo(
                 processRename(path);
                 recurseQueryServer = etag.get() == base._etag ? ParentNotChanged : NormalQuery;
             }
-            if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm == dbEntry._remotePerm) {
+            if (item->isDirectory() && serverEntry.isValid() && dbEntry.isValid() && serverEntry.etag == dbEntry._etag && serverEntry.remotePerm != dbEntry._remotePerm) {
                 recurseQueryServer = ParentNotChanged;
             }
             processFileFinalize(item, path, item->isDirectory(), NormalQuery, recurseQueryServer);
@@ -2288,7 +2283,7 @@ DiscoverySingleDirectoryJob *ProcessDirectoryJob::startAsyncServerQuery()
                 const auto alreadyDownloaded = _discoveryData->_statedb->getFileRecord(_dirItem->_file, &record) && record.isValid();
                 // we need to make sure we first download all e2ee files/folders before migrating
                 _dirItem->_isEncryptedMetadataNeedUpdate = alreadyDownloaded && serverJob->encryptedMetadataNeedUpdate();
-                _dirItem->_e2eEncryptionStatus = serverJob->currentEncryptionStatus();
+                _dirItem->_e2eEncryptionStatus = SyncFileItem::EncryptionStatus::EncryptedMigratedV2_0;
                 _dirItem->_e2eEncryptionStatusRemote = serverJob->currentEncryptionStatus();
                 _dirItem->_e2eEncryptionServerCapability = serverJob->requiredEncryptionStatus();
                 qCDebug(lcDisco()) << _dirItem->_e2eEncryptionStatus << _dirItem->_e2eEncryptionServerCapability;

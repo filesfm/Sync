@@ -981,7 +981,7 @@ bool OwncloudPropagator::createConflict(const SyncFileItemPtr &item,
 
         // If the file is locked, we want to retry this sync when it
         // becomes available again.
-        if (FileSystem::isFileLocked(fn, FileSystem::LockMode::SharedRead)) {
+        if (FileSystem::isFileLocked(fn)) {
             emit seenLockedFile(fn);
         }
 
@@ -1055,7 +1055,7 @@ OCC::Optional<QString> OwncloudPropagator::createCaseClashConflict(const SyncFil
 
         // If the file is locked, we want to retry this sync when it
         // becomes available again.
-        if (FileSystem::isFileLocked(filename, FileSystem::LockMode::SharedRead)) {
+        if (FileSystem::isFileLocked(filename)) {
             emit seenLockedFile(filename);
         }
 
@@ -1504,7 +1504,8 @@ void PropagateDirectory::slotSubJobsFinished(SyncFileItem::Status status)
             || _item->_instruction == CSYNC_INSTRUCTION_UPDATE_METADATA) {
 
             if (!_item->_remotePerm.isNull() &&
-                !_item->_remotePerm.hasPermissionsForReadWrite()) {
+                !_item->_remotePerm.hasPermission(RemotePermissions::CanAddFile) &&
+                !_item->_remotePerm.hasPermission(RemotePermissions::CanAddSubDirectories)) {
                 try {
                     if (FileSystem::fileExists(propagator()->fullLocalPath(_item->_file))) {
                         FileSystem::setFolderPermissions(propagator()->fullLocalPath(_item->_file), FileSystem::FolderPermissions::ReadOnly);

@@ -16,23 +16,21 @@ namespace OCC
 Q_LOGGING_CATEGORY(lcUpdateE2eeFolderUsersMetadataJob, "nextcloud.gui.updatee2eefolderusersmetadatajob", QtInfoMsg)
 
 UpdateE2eeFolderUsersMetadataJob::UpdateE2eeFolderUsersMetadataJob(const AccountPtr &account,
-                                                                   SyncJournalDb *journalDb,
-                                                                   const QString &syncFolderRemotePath,
-                                                                   const Operation operation,
-                                                                   const QString &fullRemotePath,
-                                                                   const QString &folderUserId,
-                                                                   const QString &folderUserDisplayName,
-                                                                   const QSslCertificate &certificate,
-                                                                   QObject *parent)
-    : QObject{parent}
-    , _account{account}
-    , _journalDb{journalDb}
-    , _syncFolderRemotePath{Utility::noLeadingSlashPath(Utility::noTrailingSlashPath(syncFolderRemotePath))}
-    , _operation{operation}
-    , _fullRemotePath{Utility::noLeadingSlashPath(fullRemotePath)}
-    , _folderUserId{folderUserId}
-    , _folderUserDisplayName{folderUserDisplayName}
-    , _folderUserCertificate{certificate}
+                                                       SyncJournalDb *journalDb,
+                                                       const QString &syncFolderRemotePath,
+                                                       const Operation operation,
+                                                       const QString &fullRemotePath,
+                                                       const QString &folderUserId,
+                                                       const QSslCertificate &certificate,
+                                                       QObject *parent)
+    : QObject(parent)
+    , _account(account)
+    , _journalDb(journalDb)
+    , _syncFolderRemotePath(Utility::noLeadingSlashPath(Utility::noTrailingSlashPath(syncFolderRemotePath)))
+    , _operation(operation)
+    , _fullRemotePath(Utility::noLeadingSlashPath(fullRemotePath))
+    , _folderUserId(folderUserId)
+    , _folderUserCertificate(certificate)
 {
     Q_ASSERT(_syncFolderRemotePath == QStringLiteral("/") || _fullRemotePath.startsWith(_syncFolderRemotePath));
     SyncJournalFileRecord rec;
@@ -80,7 +78,7 @@ void UpdateE2eeFolderUsersMetadataJob::start(const bool keepLock)
 void UpdateE2eeFolderUsersMetadataJob::slotStartE2eeMetadataJobs()
 {
     if (_operation == Operation::Add && _folderUserCertificate.isNull()) {
-        emit finished(404, tr("Could not fetch public key for user %1").arg(_folderUserDisplayName));
+        emit finished(404, tr("Could not fetch public key for user %1").arg(_folderUserId));
         return;
     }
 
@@ -108,7 +106,7 @@ void UpdateE2eeFolderUsersMetadataJob::slotFetchMetadataJobFinished(int statusCo
     }
 
     if (!_encryptedFolderMetadataHandler->folderMetadata() || !_encryptedFolderMetadataHandler->folderMetadata()->isValid()) {
-        emit finished(403, tr("Could not add or remove user %1 to access folder %2").arg(_folderUserDisplayName).arg(_fullRemotePath));
+        emit finished(403, tr("Could not add or remove user %1 to access folder %2").arg(_folderUserId).arg(_fullRemotePath));
         return;
     }
     startUpdate();
@@ -201,8 +199,8 @@ void UpdateE2eeFolderUsersMetadataJob::scheduleSubJobs()
         if (record.isDirectory()) {
             const auto folderMetadata = _encryptedFolderMetadataHandler->folderMetadata();
             const auto subJob = new UpdateE2eeFolderUsersMetadataJob(_account, _journalDb, _syncFolderRemotePath, UpdateE2eeFolderUsersMetadataJob::ReEncrypt, Utility::trailingSlashPath(_syncFolderRemotePath) + QString::fromUtf8(record._e2eMangledName));
-            subJob->setMetadataKeyForEncryption(folderMetadata->binaryMetadataKeyForEncryption());
-            subJob->setMetadataKeyForDecryption(folderMetadata->binaryMetadataKeyForDecryption());
+            subJob->setMetadataKeyForEncryption(folderMetadata->metadataKeyForEncryption());
+            subJob->setMetadataKeyForDecryption(folderMetadata->metadataKeyForDecryption());
             subJob->setKeyChecksums(folderMetadata->keyChecksums());
             subJob->setParent(this);
             subJob->setFolderToken(_encryptedFolderMetadataHandler->folderToken());

@@ -312,13 +312,7 @@ bool FileSystem::removeRecursively(const QString &path,
         auto folderDeleteError = QString{};
 
         try {
-#ifdef Q_OS_WIN
-            // std::filesystem::remove does not handle paths greater than MAX_PATH, but it seems to be fine with the prefixed UNC paths ...
-            const auto fspath = std::filesystem::path{FileSystem::longWinPath(fileInfo.filePath()).toStdWString()};
-#else
-            const auto fspath = std::filesystem::path{fileInfo.filePath().toStdWString()};
-#endif
-            if (!std::filesystem::remove(fspath)) {
+            if (!std::filesystem::remove(std::filesystem::path{fileInfo.filePath().toStdWString()})) {
                 qCWarning(lcFileSystem()) << "File is already deleted" << fileInfo.filePath();
             }
         }
@@ -487,8 +481,7 @@ bool FileSystem::isFolderReadOnly(const std::filesystem::path &path) noexcept
     fileHandle.reset(CreateFileW(rawLongPath, desiredAccess, shareMode, nullptr, creationDisposition, flagsAndAttributes, nullptr));
 
     if (fileHandle.get() == INVALID_HANDLE_VALUE) {
-        const auto lastError = GetLastError();
-        qCWarning(lcFileSystem).nospace() << "CreateFileW failed, path=" << longPath << " errorMessage=" << Utility::formatWinError(lastError);
+        qCWarning(lcFileSystem).nospace() << "CreateFileW failed, path=" << longPath << " errorMessage=" << Utility::formatWinError(GetLastError());
         return false;
     }
 
@@ -508,8 +501,7 @@ bool FileSystem::isFolderReadOnly(const std::filesystem::path &path) noexcept
 
     ACL_SIZE_INFORMATION aclSize;
     if (!GetAclInformation(resultDacl, &aclSize, sizeof(aclSize), AclSizeInformation)) {
-        const auto lastError = GetLastError();
-        qCWarning(lcFileSystem).nospace() << "GetAclInformation failed, path=" << longPath << " errorMessage=" << Utility::formatWinError(lastError);
+        qCWarning(lcFileSystem).nospace() << "GetAclInformation failed, path=" << longPath << " errorMessage=" << Utility::formatWinError(GetLastError());
         return false;
     }
 

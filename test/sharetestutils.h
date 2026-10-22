@@ -92,7 +92,7 @@ public:
 
     static constexpr auto testFileName = "file.md";
     static constexpr auto searchResultsReplyDelay = 100;
-    static constexpr auto expectedDtFormat = "yyyy-MM-dd 23:59:59";
+    static constexpr auto expectedDtFormat = "yyyy-MM-dd 00:00:00";
 
     const QByteArray createNewShare(const Share::ShareType shareType, const QString &shareWith, const QString &password);
     [[nodiscard]] int shareCount() const;

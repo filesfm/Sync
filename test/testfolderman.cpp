@@ -19,7 +19,6 @@
 #include "accountstate.h"
 #include <accountmanager.h>
 #include "configfile.h"
-#include "socketapi/socketapi.h"
 #include "syncenginetestutils.h"
 #include "testhelper.h"
 

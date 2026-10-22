@@ -130,7 +130,7 @@ void Logger::doLog(QtMsgType type, const QMessageLogContext &ctx, const QString 
     {
         QMutexLocker lock(&_mutex);
 
-        if (!logFile().isEmpty() && linesCounter >= MaxLogLinesCount) {
+        if (linesCounter >= MaxLogLinesCount) {
             linesCounter = 0;
             if (_logstream) {
                 _logstream->flush();

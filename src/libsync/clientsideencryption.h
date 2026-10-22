@@ -55,7 +55,7 @@ public:
 
     CertificateInformation();
 
-    explicit CertificateInformation(PKCS11_CERT *hardwareCertificate,
+    explicit CertificateInformation(PKCS11_KEY *hardwarePrivateKey,
                                     QSslCertificate &&certificate);
 
     explicit CertificateInformation(CertificateType certificateType,
@@ -99,7 +99,7 @@ private:
 
     void doNotCheckEncryptionCertificate();
 
-    PKCS11_CERT* _hardwareCertificate = nullptr;
+    PKCS11_KEY* _hardwarePrivateKey = nullptr;
 
     QByteArray _privateKeyData;
 
@@ -391,7 +391,7 @@ private:
     [[nodiscard]] bool checkServerPublicKeyValidity(const QByteArray &serverPublicKeyString) const;
     [[nodiscard]] bool sensitiveDataRemaining() const;
 
-    [[nodiscard]] bool checkEncryptionIsWorking(const CertificateInformation &currentCertificate);
+    [[nodiscard]] bool checkEncryptionIsWorking();
 
     void failedToInitialize();
 

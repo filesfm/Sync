@@ -53,7 +53,7 @@ void LockWatcher::checkFiles()
     QSet<QString> unlocked;
 
     for (const auto &path : std::as_const(_watchedPaths)) {
-        if (!FileSystem::isFileLocked(path, FileSystem::LockMode::SharedRead)) {
+        if (!FileSystem::isFileLocked(path)) {
             qCInfo(lcLockWatcher) << "Lock of" << path << "was released";
             emit fileUnlocked(path);
             unlocked.insert(path);

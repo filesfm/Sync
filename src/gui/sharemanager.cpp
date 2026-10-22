@@ -524,7 +524,6 @@ void ShareManager::createE2EeShareJob(const QString &fullRemotePath,
                                                                          UpdateE2eeFolderUsersMetadataJob::Add,
                                                                          fullRemotePath,
                                                                          sharee->shareWith(),
-                                                                         sharee->displayName(),
                                                                          QSslCertificate{},
                                                                          this);
 
