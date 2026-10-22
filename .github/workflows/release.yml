@@ -256,79 +256,6 @@ jobs:
           path: dist/*.AppImage
           if-no-files-found: error
 
-  flatpak:
-    name: Flatpak
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.10
-      options: --privileged
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # Equivalent to flatpak/flatpak-github-actions/flatpak-builder, run
-      # by hand so the network-dependent step (fetching org.kde.Platform
-      # from dl.flathub.org) can be retried -- that CDN has documented,
-      # recurring timeout issues unrelated to this manifest. See:
-      # https://github.com/flathub/flathub/issues/4993
-      - name: Build Flatpak bundle
-        env:
-          VERSION: ${{ github.ref_name }}
-        run: |
-          for attempt in 1 2 3; do
-            echo "flatpak-builder attempt $attempt/3"
-            if /app/bin/xvfb-run --auto-servernum flatpak-builder \
-              --repo=repo \
-              --disable-rofiles-fuse \
-              --install-deps-from=flathub \
-              --subject="Built from ${GITHUB_SHA}" \
-              --force-clean \
-              --default-branch=master \
-              --arch=x86_64 \
-              --ccache \
-              --state-dir=.flatpak-builder \
-              flatpak_app \
-              com.files.fm.sync.yml; then
-              break
-            fi
-            if [ "$attempt" = 3 ]; then
-              echo "flatpak-builder failed after 3 attempts" >&2
-              exit 1
-            fi
-            echo "flatpak-builder failed, retrying in 30s..."
-            sleep 30
-          done
-
-          flatpak build-bundle repo "files_fm_sync-${VERSION#v}.flatpak" \
-            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
-            --arch=x86_64 \
-            com.files.fm.sync master
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: flatpak
-          path: files_fm_sync-*.flatpak
-          if-no-files-found: error
-
-  snap:
-    name: Snap
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Build snap
-        id: snapcraft
-        uses: snapcore/action-build@3bdaa03e1ba6bf59a65f84a751d943d549a54e79 # v1
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: snap
-          path: ${{ steps.snapcraft.outputs.snap }}
-          if-no-files-found: error
-
   macos:
     name: macOS
     runs-on: macos-14
@@ -965,7 +892,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [appimage, flatpak, snap, macos, windows]
+    needs: [appimage, macos, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
