@@ -1,8 +1,11 @@
 /*
- *    This software is in the public domain, furnished "as is", without technical
- *    support, and with no warranty, express or implied, as to its usefulness for
- *    any purpose.
- *
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2017 ownCloud, Inc.
+ * SPDX-License-Identifier: CC0-1.0
+ * 
+ * This software is in the public domain, furnished "as is", without technical
+ * support, and with no warranty, express or implied, as to its usefulness for
+ * any purpose.
  */
 
 #include <QtTest>
@@ -812,7 +815,7 @@ private slots:
     {
         QFETCH(bool, local);
         FakeFolder fakeFolder { FileInfo::A12_B12_C12_S12() };
-        auto &modifier = local ? fakeFolder.localModifier() : fakeFolder.remoteModifier();
+        auto &modifier = local ? static_cast<FileModifier&>(fakeFolder.localModifier()) : fakeFolder.remoteModifier();
 
         modifier.mkdir("FolA");
         modifier.mkdir("FolA/FolB");

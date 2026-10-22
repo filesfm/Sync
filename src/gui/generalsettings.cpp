@@ -312,7 +312,9 @@ void GeneralSettings::loadMiscSettings()
     _ui->callNotificationsCheckBox->setEnabled(cfgFile.optionalServerNotifications());
     _ui->callNotificationsCheckBox->setChecked(cfgFile.showCallNotifications());
     _ui->showInExplorerNavigationPaneCheckBox->setChecked(cfgFile.showInExplorerNavigationPane());
+#ifdef WITH_CRASHREPORTER
     _ui->crashreporterCheckBox->setChecked(cfgFile.crashReporter());
+#endif
     _ui->newExternalStorage->setChecked(cfgFile.confirmExternalStorage());
     _ui->monoIconsCheckBox->setChecked(cfgFile.monoIcons());
     _ui->moveFilesToTrashCheckBox->setChecked(cfgFile.moveToTrash());
@@ -533,7 +535,9 @@ void GeneralSettings::saveMiscSettings()
     Theme::instance()->setSystrayUseMonoIcons(useMonoIcons);
 
     cfgFile.setMonoIcons(useMonoIcons);
+#ifdef WITH_CRASHREPORTER
     cfgFile.setCrashReporter(_ui->crashreporterCheckBox->isChecked());
+#endif
     cfgFile.setMoveToTrash(_ui->moveFilesToTrashCheckBox->isChecked());
     cfgFile.setNewBigFolderSizeLimit(newFolderLimitEnabled, _ui->newFolderLimitSpinBox->value());
     cfgFile.setConfirmExternalStorage(_ui->newExternalStorage->isChecked());

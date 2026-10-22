@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Daniel Molkentin <danimo@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "filesystem.h"
@@ -273,7 +265,7 @@ bool FileSystem::removeRecursively(const QString &path, const std::function<void
         // we never want to go into this branch for .lnk files
         bool isDir = FileSystem::isDir(fi.absoluteFilePath()) && !FileSystem::isSymLink(fi.absoluteFilePath()) && !FileSystem::isJunction(fi.absoluteFilePath());
         if (isDir) {
-            removeOk = removeRecursively(path + QLatin1Char('/') + di.fileName(), onDeleted, errors, onError); // recursive
+            removeOk = removeRecursively(joinPath(path, di.fileName()), onDeleted, errors, onError); // recursive
         } else {
             QString removeError;
 
@@ -473,10 +465,15 @@ bool FileSystem::setFolderPermissions(const QString &path,
         return false;
     }
 #else
-    static constexpr auto writePerms = std::filesystem::perms::owner_write | std::filesystem::perms::group_write | std::filesystem::perms::others_write;
     const auto stdStrPath = path.toStdWString();
+
     try
     {
+        static constexpr auto writePerms = std::filesystem::perms::owner_write | std::filesystem::perms::group_write | std::filesystem::perms::others_write;
+
+        const auto currentPermissions = std::filesystem::status(stdStrPath).permissions();
+        qCDebug(lcFileSystem()).nospace() << "current permissions path=" << path << " perms=" << Qt::showbase << Qt::oct << static_cast<int>(currentPermissions);
+
         switch (permissions) {
         case OCC::FileSystem::FolderPermissions::ReadOnly:
             std::filesystem::permissions(stdStrPath, writePerms, std::filesystem::perm_options::remove);

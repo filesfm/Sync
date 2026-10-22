@@ -514,12 +514,12 @@ AccountPtr AccountManager::loadAccountHelper(QSettings &settings)
     acc->setUploadLimitSetting(
         settings.value(
             networkUploadLimitSettingC,
-            QVariant::fromValue(Account::AccountNetworkTransferLimitSetting::GlobalLimit)
+            QVariant::fromValue(Account::AccountNetworkTransferLimitSetting::NoLimit)
         ).value<Account::AccountNetworkTransferLimitSetting>());
     acc->setDownloadLimitSetting(
         settings.value(
             networkDownloadLimitSettingC,
-            QVariant::fromValue(Account::AccountNetworkTransferLimitSetting::GlobalLimit)
+            QVariant::fromValue(Account::AccountNetworkTransferLimitSetting::NoLimit)
         ).value<Account::AccountNetworkTransferLimitSetting>());
     acc->setUploadLimit(settings.value(networkUploadLimitC).toInt());
     acc->setDownloadLimit(settings.value(networkDownloadLimitC).toInt());
@@ -606,7 +606,7 @@ void AccountManager::deleteAccount(OCC::AccountState *account)
     settings->remove(account->account()->id());
 
     // Forget E2E keys
-    account->account()->e2e()->forgetSensitiveData(account->account());
+    account->account()->e2e()->forgetSensitiveData();
 
     account->account()->deleteAppToken();
 

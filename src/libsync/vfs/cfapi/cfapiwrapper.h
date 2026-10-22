@@ -1,24 +1,21 @@
 /*
- * Copyright (C) by Kevin Ottens <kevin.ottens@nextcloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 #pragma once
 
-#include <memory>
+// include order is important, this must be included before cfapi
+#include <windows.h>
+#include <winternl.h>
+
+#include <cfapi.h>
 
 #include "cfapiexport.h"
 #include "common/pinstate.h"
 #include "common/result.h"
 #include "common/vfs.h"
+
+#include <memory>
 
 struct CF_PLACEHOLDER_BASIC_INFO;
 
@@ -57,27 +54,26 @@ private:
 class NEXTCLOUD_CFAPI_EXPORT PlaceHolderInfo
 {
 public:
-    using Deleter = void (*)(CF_PLACEHOLDER_BASIC_INFO *);
+    PlaceHolderInfo(std::vector<char> &&buffer = {});
 
-    PlaceHolderInfo();
-    PlaceHolderInfo(CF_PLACEHOLDER_BASIC_INFO *data, Deleter deleter);
+    inline auto *get() const noexcept { return reinterpret_cast<CF_PLACEHOLDER_BASIC_INFO *>(const_cast<char *>(_data.data())); }
+    inline auto *operator->() const noexcept { return get(); }
+    inline explicit operator bool() const noexcept { return !_data.empty(); }
 
-    inline CF_PLACEHOLDER_BASIC_INFO *get() const noexcept { return _data.get(); }
-    inline CF_PLACEHOLDER_BASIC_INFO *operator->() const noexcept { return _data.get(); }
-    inline explicit operator bool() const noexcept { return static_cast<bool>(_data); }
+    inline auto size() const { return _data.size(); }
 
     Optional<PinState> pinState() const;
 
 private:
-    std::unique_ptr<CF_PLACEHOLDER_BASIC_INFO, Deleter> _data;
+    std::vector<char> _data;
 };
 
 NEXTCLOUD_CFAPI_EXPORT Result<void, QString> registerSyncRoot(const QString &path, const QString &providerName, const QString &providerVersion, const QString &folderAlias, const QString &navigationPaneClsid, const QString &displayName, const QString &accountDisplayName);
 NEXTCLOUD_CFAPI_EXPORT void unregisterSyncRootShellExtensions(const QString &providerName, const QString &folderAlias, const QString &accountDisplayName);
 NEXTCLOUD_CFAPI_EXPORT Result<void, QString> unregisterSyncRoot(const QString &path, const QString &providerName, const QString &accountDisplayName);
 
-NEXTCLOUD_CFAPI_EXPORT Result<ConnectionKey, QString> connectSyncRoot(const QString &path, VfsCfApi *context);
-NEXTCLOUD_CFAPI_EXPORT Result<void, QString> disconnectSyncRoot(ConnectionKey &&key);
+Result<CF_CONNECTION_KEY, QString> connectSyncRoot(const QString &path, VfsCfApi *context);
+Result<void, QString> disconnectSyncRoot(CF_CONNECTION_KEY &&key);
 NEXTCLOUD_CFAPI_EXPORT bool isAnySyncRoot(const QString &providerName, const QString &accountDisplayName);
 
 NEXTCLOUD_CFAPI_EXPORT bool isSparseFile(const QString &path);

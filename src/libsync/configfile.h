@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Klaas Freitag <freitag@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef CONFIGFILE_H
@@ -22,6 +14,7 @@
 #include <QString>
 #include <QVariant>
 #include <chrono>
+#include <QVersionNumber>
 
 class QWidget;
 class QHeaderView;
@@ -49,6 +42,7 @@ public:
     static QString excludeFileFromSystem(); // doesn't access config dir
 
     void cleanUpdaterConfiguration();
+    void cleanupGlobalNetworkConfiguration();
 
     /**
      * Creates a backup of any given fileName in the config folder
@@ -63,24 +57,24 @@ public:
 
     bool exists();
 
-    [[nodiscard]] QString defaultConnection() const;
+    [[nodiscard]] QString defaultConnectionGroupName() const;
 
     // the certs do not depend on a connection.
     QByteArray caCerts();
     void setCaCerts(const QByteArray &);
 
-    bool passwordStorageAllowed(const QString &connection = QString());
+    bool passwordStorageAllowed(const QString &name = QString());
 
     /* Server poll interval in milliseconds */
-    [[nodiscard]] std::chrono::milliseconds remotePollInterval(const QString &connection = QString()) const;
+    [[nodiscard]] std::chrono::milliseconds remotePollInterval(const QString &connectionGroup = QString()) const;
     /* Set poll interval. Value in milliseconds has to be larger than 5000 */
-    void setRemotePollInterval(std::chrono::milliseconds interval, const QString &connection = QString());
+    void setRemotePollInterval(std::chrono::milliseconds interval, const QString &connectionGroupName = QString());
 
     /* Interval to check for new notifications */
-    [[nodiscard]] std::chrono::milliseconds notificationRefreshInterval(const QString &connection = QString()) const;
+    [[nodiscard]] std::chrono::milliseconds notificationRefreshInterval(const QString &connectionGroup = QString()) const;
 
     /* Force sync interval, in milliseconds */
-    [[nodiscard]] std::chrono::milliseconds forceSyncInterval(const QString &connection = QString()) const;
+    [[nodiscard]] std::chrono::milliseconds forceSyncInterval(const QString &connectionGroup = QString()) const;
 
     /**
      * Interval in milliseconds within which full local discovery is required
@@ -97,9 +91,6 @@ public:
 
     [[nodiscard]] int deleteFilesThreshold() const;
     void setDeleteFilesThreshold(int thresholdValue);
-
-    [[nodiscard]] bool crashReporter() const;
-    void setCrashReporter(bool enabled);
 
     [[nodiscard]] bool automaticLogDir() const;
     void setAutomaticLogDir(bool enabled);
@@ -189,15 +180,15 @@ public:
     void restoreGeometry(QWidget *w);
 
     // how often the check about new versions runs
-    [[nodiscard]] std::chrono::milliseconds updateCheckInterval(const QString &connection = QString()) const;
+    [[nodiscard]] std::chrono::milliseconds updateCheckInterval(const QString &connectionGroupName = QString()) const;
 
     // skipUpdateCheck completely disables the updater and hides its UI
-    [[nodiscard]] bool skipUpdateCheck(const QString &connection = QString()) const;
-    void setSkipUpdateCheck(bool, const QString &);
+    [[nodiscard]] bool skipUpdateCheck(const QString &connectionGroupName = QString()) const;
+    void setSkipUpdateCheck(bool, const QString &connectionGroupName);
 
     // autoUpdateCheck allows the user to make the choice in the UI
-    [[nodiscard]] bool autoUpdateCheck(const QString &connection = QString()) const;
-    void setAutoUpdateCheck(bool, const QString &);
+    [[nodiscard]] bool autoUpdateCheck(const QString &connectionGroupName = QString()) const;
+    void setAutoUpdateCheck(bool, const QString &connectionGroupName);
 
     /** Query-parameter 'updatesegment' for the update check, value between 0 and 99.
         Used to throttle down desktop release rollout in order to keep the update servers alive at peak times.
@@ -231,6 +222,9 @@ public:
     [[nodiscard]] QString clientVersionString() const;
     void setClientVersionString(const QString &version);
 
+    [[nodiscard]] QString clientPreviousVersionString() const;
+    void setClientPreviousVersionString(const QString &version);
+
     /** If the option 'Launch on system startup' is set
         Updated by configVersionMigration() at client startup. */
     [[nodiscard]] bool launchOnSystemStartup() const;
@@ -241,6 +235,10 @@ public:
 
     [[nodiscard]] QString desktopEnterpriseChannel() const;
     void setDesktopEnterpriseChannel(const QString &channel);
+
+    /// Enforce a specific language used for the UI
+    [[nodiscard]] QString language() const;
+    void setLanguage(const QString &language);
 
     /**  Returns a new settings pre-set in a specific group.  The Settings will be created
          with the given parent. If no parent is specified, the caller must destroy the settings */
@@ -253,13 +251,49 @@ public:
     [[nodiscard]] static QString discoveredLegacyConfigPath();
     static void setDiscoveredLegacyConfigPath(const QString &discoveredLegacyConfigPath);
 
+    /// Helper function for migration/upgrade proccess
+    enum MigrationPhase {
+        NotStarted,
+        SetupConfigFile,
+        SetupUsers,
+        SetupFolders,
+        Done
+    };
+    [[nodiscard]] bool isUpgrade() const;
+    [[nodiscard]] bool isDowngrade() const;
+    [[nodiscard]] bool shouldTryUnbrandedToBrandedMigration() const;
+    [[nodiscard]] bool isUnbrandedToBrandedMigrationInProgress() const;
+    [[nodiscard]] bool shouldTryToMigrate() const;
+    /// Does the current app has a different version of the config version
+    [[nodiscard]] bool hasVersionChanged() const;
+    [[nodiscard]] bool isMigrationInProgress() const;
+    [[nodiscard]] MigrationPhase migrationPhase() const;
+    void setMigrationPhase(const MigrationPhase phase);
+    static constexpr char unbrandedAppName[] = "Nextcloud";
+    static constexpr char legacyAppName[] = "Owncloud";
+
+    static constexpr char clientVersionC[] = "clientVersion";
+
     static constexpr char isVfsEnabledC[] = "isVfsEnabled";
     static constexpr char launchOnSystemStartupC[] = "launchOnSystemStartup";
+    static constexpr char monoIconsC[] = "monoIcons";
     static constexpr char optionalServerNotificationsC[] = "optionalServerNotifications";
     static constexpr char promptDeleteC[] = "promptDeleteAllFiles";
     static constexpr char showCallNotificationsC[] = "showCallNotifications";
     static constexpr char showChatNotificationsC[] = "showChatNotifications";
     static constexpr char showInExplorerNavigationPaneC[] = "showInExplorerNavigationPane";
+    static constexpr char confirmExternalStorageC[] = "confirmExternalStorage";
+    static constexpr char useNewBigFolderSizeLimitC[] = "useNewBigFolderSizeLimit";
+    static constexpr char newBigFolderSizeLimitC[] = "newBigFolderSizeLimit";
+    static constexpr char notifyExistingFoldersOverLimitC[] = "notifyExistingFoldersOverLimit";
+    static constexpr char stopSyncingExistingFoldersOverLimitC[] = "stopSyncingExistingFoldersOverLimit";
+    static constexpr char moveToTrashC[] = "moveToTrash";
+    static constexpr char updateChannelC[] = "updateChannel";
+    static constexpr char autoUpdateCheckC[] = "autoUpdateCheck";
+    static constexpr char useUploadLimitC[] = "BWLimit/useUploadLimit";
+    static constexpr char useDownloadLimitC[] = "BWLimit/useDownloadLimit";
+    static constexpr char uploadLimitC[] = "BWLimit/uploadLimit";
+    static constexpr char downloadLimitC[] = "BWLimit/downloadLimit";
 
 protected:
     [[nodiscard]] QVariant getPolicySetting(const QString &policy, const QVariant &defaultValue = QVariant()) const;
@@ -279,6 +313,7 @@ private:
 
     static QString _confDir;
     static QString _discoveredLegacyConfigPath;
+    static MigrationPhase _migrationPhase;
 };
 }
 #endif // CONFIGFILE_H

@@ -1,16 +1,7 @@
 /*
- * Copyright (C) by Olivier Goffart <ogoffart@owncloud.com>
- * Copyright (C) by Klaas Freitag <freitag@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2013 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "owncloudpropagator.h"
@@ -22,6 +13,7 @@
 #include "propagateremotemove.h"
 #include "propagateremotemkdir.h"
 #include "bulkpropagatorjob.h"
+#include "bulkpropagatordownloadjob.h"
 #include "updatee2eefoldermetadatajob.h"
 #include "updatemigratede2eemetadatajob.h"
 #include "propagatorjobs.h"
@@ -284,10 +276,11 @@ void PropagateItemJob::done(const SyncFileItem::Status statusArg, const QString 
         break;
     }
 
-    if (_item->hasErrorStatus())
+    if (_item->hasErrorStatus()) {
         qCWarning(lcPropagator) << "Could not complete propagation of" << _item->destination() << "by" << this << "with status" << _item->_status << "and error:" << _item->_errorString;
-    else
+    } else {
         qCInfo(lcPropagator) << "Completed propagation of" << _item->destination() << "by" << this << "with status" << _item->_status;
+    }
     emit propagator()->itemCompleted(_item, category);
     emit finished(_item->_status);
 
@@ -693,7 +686,17 @@ void OwncloudPropagator::startFilePropagation(const SyncFileItemPtr &item,
         }
         removedDirectory = item->_file + "/";
     } else {
-        directories.top().second->appendTask(item);
+        const auto isVfsCfApi = syncOptions()._vfs && syncOptions()._vfs->mode() == Vfs::WindowsCfApi;
+        const auto isDownload = item->_direction == SyncFileItem::Down &&
+            (item->_instruction == CSYNC_INSTRUCTION_NEW || item->_instruction == CSYNC_INSTRUCTION_SYNC);
+        const auto isVirtualFile = item->_type == ItemTypeVirtualFile;
+        const auto shouldAddBulkPropagateDownloadItem = isDownload && isVirtualFile && isVfsCfApi;
+
+        if (shouldAddBulkPropagateDownloadItem) {
+            addBulkPropagateDownloadItem(item, directories);
+        } else {
+            directories.top().second->appendTask(item);
+        }
     }
 
     if (item->_instruction == CSYNC_INSTRUCTION_CONFLICT) {
@@ -701,6 +704,27 @@ void OwncloudPropagator::startFilePropagation(const SyncFileItemPtr &item,
         // directory we want to skip processing items inside it.
         maybeConflictDirectory = item->_file + "/";
     }
+}
+
+void OwncloudPropagator::addBulkPropagateDownloadItem(const SyncFileItemPtr &item, QStack<QPair<QString, PropagateDirectory *>> &directories)
+{
+    auto bulkPropagatorDownloadJob = static_cast<BulkPropagatorDownloadJob*>(nullptr);
+    const auto foundBulkPrpagatorDownloadJobIt = std::find_if(std::cbegin(directories.top().second->_subJobs._jobsToDo),
+                                                              std::cend(directories.top().second->_subJobs._jobsToDo),
+                                                              [](PropagatorJob *job)
+                                                              {
+                                                                  const auto bulkDownloadJob = qobject_cast<BulkPropagatorDownloadJob *>(job);
+                                                                  return bulkDownloadJob != nullptr;
+                                                              }
+                                                              );
+
+    if (foundBulkPrpagatorDownloadJobIt == std::cend(directories.top().second->_subJobs._jobsToDo)) {
+        bulkPropagatorDownloadJob = new BulkPropagatorDownloadJob(this, directories.top().second);
+        directories.top().second->appendJob(bulkPropagatorDownloadJob);
+    } else {
+        bulkPropagatorDownloadJob = qobject_cast<BulkPropagatorDownloadJob *>(*foundBulkPrpagatorDownloadJobIt);
+    }
+    bulkPropagatorDownloadJob->addDownloadItem(item);
 }
 
 void OwncloudPropagator::processE2eeMetadataMigration(const SyncFileItemPtr &item, QStack<QPair<QString, PropagateDirectory *>> &directories)
@@ -1529,9 +1553,6 @@ void PropagateDirectory::slotSubJobsFinished(SyncFileItem::Status status)
                 }
             }
             if (!_item->_isAnyCaseClashChild && !_item->_isAnyInvalidCharChild) {
-                if (_item->isEncrypted()) {
-                    _item->_e2eCertificateFingerprint = propagator()->account()->encryptionCertificateFingerprint();
-                }
                 const auto result = propagator()->updateMetadata(*_item);
                 if (!result) {
                     status = _item->_status = SyncFileItem::FatalError;

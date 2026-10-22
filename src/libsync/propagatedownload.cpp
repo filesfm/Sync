@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Olivier Goffart <ogoffart@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
@@ -36,6 +28,8 @@
 #include <cmath>
 
 namespace OCC {
+
+static constexpr auto CustomDecompressedSafetyCheckThreshold = 20 * 1024 * 1024;
 
 Q_LOGGING_CATEGORY(lcGetJob, "nextcloud.sync.networkjob.get", QtInfoMsg)
 Q_LOGGING_CATEGORY(lcPropagateDownload, "nextcloud.sync.propagator.download", QtInfoMsg)
@@ -122,6 +116,7 @@ void GETFileJob::start()
     }
 
     req.setPriority(QNetworkRequest::LowPriority); // Long downloads must not block non-propagation jobs.
+    req.setDecompressedSafetyCheckThreshold(CustomDecompressedSafetyCheckThreshold);
 
     if (_directDownloadUrl.isEmpty()) {
         sendRequest("GET", makeDavUrl(path()), req);
@@ -1190,7 +1185,6 @@ void PropagateDownloadFile::finalizeDownload()
 {
     if (isEncrypted()) {
         if (_downloadEncryptedHelper->decryptFile(_tmpFile)) {
-            _item->_e2eCertificateFingerprint = propagator()->account()->encryptionCertificateFingerprint();
             downloadFinished();
         } else {
             done(SyncFileItem::NormalError, _downloadEncryptedHelper->errorString(), ErrorCategory::GenericError);

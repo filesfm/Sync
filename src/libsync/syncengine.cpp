@@ -1,16 +1,7 @@
 /*
- * Copyright (C) by Duncan Mac-Vicar P. <duncan@kde.org>
- * Copyright (C) by Klaas Freitag <freitag@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "syncengine.h"
@@ -405,7 +396,7 @@ void OCC::SyncEngine::slotItemDiscovered(const OCC::SyncFileItemPtr &item)
 
             // Update on-disk virtual file metadata
             if (modificationHappened && item->_type == ItemTypeVirtualFile) {
-                auto r = _syncOptions._vfs->updateMetadata(filePath, item->_modtime, item->_size, item->_fileId);
+                auto r = _syncOptions._vfs->updateMetadata(*item, filePath, {});
                 if (!r) {
                     item->_status = SyncFileItem::Status::NormalError;
                     item->_instruction = CSYNC_INSTRUCTION_ERROR;
@@ -420,10 +411,6 @@ void OCC::SyncEngine::slotItemDiscovered(const OCC::SyncFileItemPtr &item)
                     emit itemCompleted(item, ErrorCategory::GenericError);
                     return;
                 }
-            }
-
-            if (rec.isE2eEncrypted()) {
-                rec._e2eCertificateFingerprint = _account->encryptionCertificateFingerprint();
             }
 
             // Updating the db happens on success
@@ -1456,8 +1443,9 @@ void SyncEngine::slotInsufficientLocalStorage()
 void SyncEngine::slotInsufficientRemoteStorage()
 {
     auto msg = tr("There is insufficient space available on the server for some uploads.");
-    if (_uniqueErrors.contains(msg))
+    if (_uniqueErrors.contains(msg)) {
         return;
+    }
 
     _uniqueErrors.insert(msg);
     emit syncError(msg, ErrorCategory::InsufficientRemoteStorage);

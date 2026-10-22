@@ -1,15 +1,6 @@
 /*
- * Copyright (C) by Claudio Cambra <claudio.cambra@nextcloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "activitylistmodeltestutils.h"
@@ -144,6 +135,55 @@ private slots:
     void testAddError() {
         testActivityAdd(&TestingALM::addErrorToActivityList, testSyncResultErrorActivity, OCC::ActivityListModel::ErrorType::SyncError);
     };
+
+    void testRemoveOutdatedNotifications() {
+        const auto model = testingALM();
+        QCOMPARE(model->rowCount(), 0);
+
+        const auto removeAndAddNotifications = [&model](const OCC::ActivityList &activities) -> void {
+            // this is pretty much the core logic of dealing with the retrieved notifications from User::slotBuildNotificationDisplay
+            model->removeOutdatedNotifications(activities);
+
+            for (const auto &activity : activities) {
+                model->addNotificationToActivityList(activity);
+            }
+        };
+
+        const auto accName = accountState->account()->displayName();
+        const auto notificationOne = exampleNotificationActivity(accName, 1);
+        const auto notificationTwo = exampleNotificationActivity(accName, 2);
+        const auto notificationThree = exampleNotificationActivity(accName, 3);
+
+        removeAndAddNotifications({notificationOne});
+        QCOMPARE(model->rowCount(), 1);
+        QCOMPARE(model->activityList().count(notificationOne), 1);
+        QCOMPARE(model->activityList().count(notificationTwo), 0);
+        QCOMPARE(model->activityList().count(notificationThree), 0);
+
+        removeAndAddNotifications({notificationOne, notificationTwo});
+        QCOMPARE(model->rowCount(), 2);
+        QCOMPARE(model->activityList().count(notificationOne), 1);
+        QCOMPARE(model->activityList().count(notificationTwo), 1);
+        QCOMPARE(model->activityList().count(notificationThree), 0);
+
+        removeAndAddNotifications({notificationOne, notificationThree});
+        QCOMPARE(model->rowCount(), 2);
+        QCOMPARE(model->activityList().count(notificationOne), 1);
+        QCOMPARE(model->activityList().count(notificationTwo), 0);
+        QCOMPARE(model->activityList().count(notificationThree), 1);
+
+        removeAndAddNotifications({notificationThree});
+        QCOMPARE(model->rowCount(), 1);
+        QCOMPARE(model->activityList().count(notificationOne), 0);
+        QCOMPARE(model->activityList().count(notificationTwo), 0);
+        QCOMPARE(model->activityList().count(notificationThree), 1);
+
+        removeAndAddNotifications({});
+        QCOMPARE(model->rowCount(), 0);
+        QCOMPARE(model->activityList().count(notificationOne), 0);
+        QCOMPARE(model->activityList().count(notificationTwo), 0);
+        QCOMPARE(model->activityList().count(notificationThree), 0);
+    }
 
     // Test removing activity from list
     void testRemoveActivityWithRow() {

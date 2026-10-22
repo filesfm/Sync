@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Christian Kamm <mail@ckamm.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2018 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "vfs_suffix.h"
@@ -74,15 +66,17 @@ bool VfsSuffix::isHydrating() const
     return false;
 }
 
-Result<void, QString> VfsSuffix::updateMetadata(const QString &filePath, time_t modtime, qint64, const QByteArray &)
+OCC::Result<OCC::Vfs::ConvertToPlaceholderResult, QString> VfsSuffix::updateMetadata(const SyncFileItem &syncItem, const QString &filePath, const QString &replacesFile)
 {
-    if (modtime <= 0) {
+    Q_UNUSED(replacesFile)
+
+    if (syncItem._modtime <= 0) {
         return {tr("Error updating metadata due to invalid modification time")};
     }
 
-    qCDebug(lcVfsSuffix()) << "setModTime" << filePath << modtime;
-    FileSystem::setModTime(filePath, modtime);
-    return {};
+    qCDebug(lcVfsSuffix()) << "setModTime" << filePath << syncItem._modtime;
+    FileSystem::setModTime(filePath, syncItem._modtime);
+    return {OCC::Vfs::ConvertToPlaceholderResult::Ok};
 }
 
 Result<void, QString> VfsSuffix::createPlaceholder(const SyncFileItem &item)

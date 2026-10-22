@@ -1,8 +1,11 @@
 /*
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2016 ownCloud GmbH
+ * SPDX-License-Identifier: CC0-1.0
+ *
  * This software is in the public domain, furnished "as is", without technical
  * support, and with no warranty, express or implied, as to its usefulness for
  * any purpose.
- *
  */
 
 #include <QtTest>
@@ -222,6 +225,20 @@ private slots:
 #endif
     }
 
+#ifdef Q_OS_LINUX
+    void testDeletingComputeChecksumBeforeCalculationCompletionDoesNotCrash()
+    {
+        // Running this multiple times in a loop makes it easier to run into a crash
+        for (auto i = 0; i < 4096; i++) {
+            auto computeChecksum = new ComputeChecksum();
+            computeChecksum->setChecksumType("MD5");
+            computeChecksum->start("/dev/zero");
+            delete computeChecksum;
+        }
+
+        QVERIFY(true); // no crash occurred
+    }
+#endif
 
     void cleanupTestCase() {
     }

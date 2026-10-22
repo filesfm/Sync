@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Daniel Molkentin <danimo@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2013 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "account.h"
@@ -79,6 +71,7 @@ Account::Account(QObject *parent)
     : QObject(parent)
     , _capabilities(QVariantMap())
     , _serverColor(Theme::defaultColor())
+    , _e2e{}
 {
     qRegisterMetaType<AccountPtr>("AccountPtr");
     qRegisterMetaType<Account *>("Account*");
@@ -156,6 +149,11 @@ void Account::setDavUser(const QString &newDavUser)
     emit prettyNameChanged();
 }
 
+QString Account::userFromCredentials() const
+{
+    return _credentials ? _credentials->user() : QString{};
+}
+
 #ifndef TOKEN_AUTH_ONLY
 QImage Account::avatar() const
 {
@@ -185,15 +183,29 @@ QString Account::displayName() const
     return displayName;
 }
 
-QString Account::userIdAtHostWithPort() const
+QString Account::shortcutName() const
 {
-    QString dn = QStringLiteral("%1@%2").arg(credentials()->user(), _url.host());
+    auto url_part = _url.host();
     const auto port = url().port();
     if (port > 0 && port != 80 && port != 443) {
-        dn.append(QLatin1Char(':'));
-        dn.append(QString::number(port));
+        url_part.append(QLatin1Char(':'));
+        url_part.append(QString::number(port));
     }
-    return dn;
+
+    auto shortcutName = QStringLiteral("%1 - %2").arg(url_part, prettyName());
+
+    return shortcutName;
+}
+
+QString Account::userIdAtHostWithPort() const
+{
+    auto host = QStringLiteral("%1@%2").arg(_davUser, _url.host());
+    const auto port = url().port();
+    if (port > 0 && port != 80 && port != 443) {
+        host.append(QLatin1Char(':'));
+        host.append(QString::number(port));
+    }
+    return host;
 }
 
 QString Account::davDisplayName() const
@@ -502,7 +514,7 @@ QSslConfiguration Account::getOrCreateSslConfig()
 
     // if setting the client certificate fails, you will probably get an error similar to this:
     //  "An internal error number 1060 happened. SSL handshake failed, client certificate was requested: SSL error: sslv3 alert handshake failure"
-    QSslConfiguration sslConfig = QSslConfiguration::defaultConfiguration();
+    auto sslConfig = QSslConfiguration::defaultConfiguration();
 
     // Try hard to reuse session for different requests
     sslConfig.setSslOption(QSsl::SslOptionDisableSessionTickets, false);
@@ -563,7 +575,7 @@ QVariant Account::credentialSetting(const QString &key) const
 void Account::setCredentialSetting(const QString &key, const QVariant &value)
 {
     if (_credentials) {
-        QString prefix = _credentials->authType();
+        const auto prefix = _credentials->authType();
         _settingsMap.insert(prefix + "_" + key, value);
     }
 }
@@ -609,8 +621,9 @@ void Account::slotHandleSslErrors(QNetworkReply *reply, QList<QSslError> errors)
     QPointer<QObject> guard = reply;
 
     if (_sslErrorHandler->handleErrors(errors, reply->sslConfiguration(), &approvedCerts, sharedFromThis())) {
-        if (!guard)
+        if (!guard) {
             return;
+        }
 
         if (!approvedCerts.isEmpty()) {
             QSslConfiguration::defaultConfiguration().addCaCertificates(approvedCerts);
@@ -626,8 +639,9 @@ void Account::slotHandleSslErrors(QNetworkReply *reply, QList<QSslError> errors)
         // certificate changes.
         reply->ignoreSslErrors(errors);
     } else {
-        if (!guard)
+        if (!guard) {
             return;
+        }
 
         // Mark all involved certificates as rejected, so we don't ask the user again.
         for (const auto &error : errors) {
@@ -660,10 +674,11 @@ void Account::slotCredentialsFetched()
             emit credentialsFetched(_credentials.data());
         });
         fetchUserNameJob->start();
-    } else {
-        qCDebug(lcAccount) << "User id already fetched.";
-        emit credentialsFetched(_credentials.data());
+        return;
     }
+
+    qCDebug(lcAccount) << "User id already fetched.";
+    emit credentialsFetched(_credentials.data());
 }
 
 void Account::slotCredentialsAsked()
@@ -749,7 +764,7 @@ void Account::resetShouldSkipE2eeMetadataChecksumValidation()
 int Account::serverVersionInt() const
 {
     // FIXME: Use Qt 5.5 QVersionNumber
-    auto components = serverVersion().split('.');
+    const auto components = serverVersion().split('.');
     return makeServerVersion(components.value(0).toInt(),
         components.value(1).toInt(),
         components.value(2).toInt());
@@ -813,39 +828,43 @@ void Account::setServerVersion(const QString &version)
         return;
     }
 
-    auto oldServerVersion = _serverVersion;
+    const auto oldServerVersion = _serverVersion;
     _serverVersion = version;
     emit serverVersionChanged(sharedFromThis(), oldServerVersion, version);
 }
 
-void Account::writeAppPasswordOnce(QString appPassword){
-    if(_wroteAppPassword)
+void Account::writeAppPasswordOnce(const QString &appPassword)
+{
+    if (_wroteAppPassword) { 
         return;
+    }
 
     // Fix: Password got written from Account Wizard, before finish.
     // Only write the app password for a connected account, else
     // there'll be a zombie keychain slot forever, never used again ;p
     //
     // Also don't write empty passwords (Log out -> Relaunch)
-    if(id().isEmpty() || appPassword.isEmpty())
+    if (id().isEmpty() || appPassword.isEmpty()) {
         return;
+    }
 
-    const QString kck = AbstractCredentials::keychainKey(
+    const auto keychainKey = AbstractCredentials::keychainKey(
                 url().toString(),
                 davUser() + app_password,
                 id()
     );
 
-    auto *job = new WritePasswordJob(Theme::instance()->appName());
+    auto job = new WritePasswordJob(Theme::instance()->appName());
     job->setInsecureFallback(false);
-    job->setKey(kck);
+    job->setKey(keychainKey);
     job->setBinaryData(appPassword.toLatin1());
     connect(job, &WritePasswordJob::finished, [this](Job *incoming) {
-        auto *writeJob = dynamic_cast<WritePasswordJob *>(incoming);
-        if (writeJob->error() == NoError)
+        auto writeJob = dynamic_cast<WritePasswordJob *>(incoming);
+        if (writeJob->error() == NoError) {
             qCInfo(lcAccount) << "appPassword stored in keychain";
-        else
+        } else {
             qCWarning(lcAccount) << "Unable to store appPassword in keychain" << writeJob->errorString();
+        }
 
         // We don't try this again on error, to not raise CPU consumption
         _wroteAppPassword = true;
@@ -853,49 +872,49 @@ void Account::writeAppPasswordOnce(QString appPassword){
     job->start();
 }
 
-void Account::retrieveAppPassword(){
-    const QString key = credentials()->user() + app_password;
-    const QString kck = AbstractCredentials::keychainKey(
+void Account::retrieveAppPassword()
+{
+    const auto key = QString(credentials()->user() + app_password);
+    const auto keychainKey = AbstractCredentials::keychainKey(
                 url().toString(),
                 key,
                 id()
     );
 
-    auto *job = new ReadPasswordJob(Theme::instance()->appName());
+    auto job = new ReadPasswordJob(Theme::instance()->appName());
     job->setInsecureFallback(false);
-    job->setKey(kck);
+    job->setKey(keychainKey);
     connect(job, &ReadPasswordJob::finished, [this](Job *incoming) {
-        auto *readJob = dynamic_cast<ReadPasswordJob *>(incoming);
-        QString pwd("");
+        auto readJob = dynamic_cast<ReadPasswordJob *>(incoming);
+        const auto password = readJob->binaryData();
         // Error or no valid public key error out
-        if (readJob->error() == NoError &&
-                readJob->binaryData().length() > 0) {
-            pwd = readJob->binaryData();
+        if (readJob->error() == NoError && password.length() > 0) {
+            qCDebug(lcAccount) << "Found appPassword";
         }
 
-        emit appPasswordRetrieved(pwd);
+        emit appPasswordRetrieved(password);
     });
     job->start();
 }
 
 void Account::deleteAppPassword()
 {
-    const QString kck = AbstractCredentials::keychainKey(
+    const auto keychainKey = AbstractCredentials::keychainKey(
                 url().toString(),
                 credentials()->user() + app_password,
                 id()
     );
 
-    if (kck.isEmpty()) {
+    if (keychainKey.isEmpty()) {
         qCDebug(lcAccount) << "appPassword is empty";
         return;
     }
 
-    auto *job = new DeletePasswordJob(Theme::instance()->appName());
+    auto job = new DeletePasswordJob(Theme::instance()->appName());
     job->setInsecureFallback(false);
-    job->setKey(kck);
+    job->setKey(keychainKey);
     connect(job, &DeletePasswordJob::finished, [this](Job *incoming) {
-        auto *deleteJob = dynamic_cast<DeletePasswordJob *>(incoming);
+        auto deleteJob = dynamic_cast<DeletePasswordJob *>(incoming);
         const auto jobError = deleteJob->error();
         if (jobError == NoError) {
             qCInfo(lcAccount) << "appPassword deleted from keychain";
@@ -932,16 +951,17 @@ void Account::deleteAppToken()
 
 void Account::fetchDirectEditors(const QUrl &directEditingURL, const QString &directEditingETag)
 {
-    if(directEditingURL.isEmpty() || directEditingETag.isEmpty())
+    if (directEditingURL.isEmpty() || directEditingETag.isEmpty()) {
         return;
+    }
 
     // Check for the directEditing capability
     if (!directEditingURL.isEmpty() &&
         (directEditingETag.isEmpty() || directEditingETag != _lastDirectEditingETag)) {
-            // Fetch the available editors and their mime types
-            auto *job = new JsonApiJob(sharedFromThis(), QLatin1String("ocs/v2.php/apps/files/api/v1/directEditing"));
-            QObject::connect(job, &JsonApiJob::jsonReceived, this, &Account::slotDirectEditingRecieved);
-            job->start();
+        // Fetch the available editors and their mime types
+        auto job = new JsonApiJob(sharedFromThis(), QLatin1String("ocs/v2.php/apps/files/api/v1/directEditing"));
+        QObject::connect(job, &JsonApiJob::jsonReceived, this, &Account::slotDirectEditingRecieved);
+        job->start();
     }
 }
 
@@ -1004,7 +1024,7 @@ void Account::setLockFileState(const QString &serverRelativePath,
                                const SyncFileItem::LockStatus lockStatus,
                                const SyncFileItem::LockOwnerType lockOwnerType)
 {
-    auto& lockStatusJobInProgress = _lockStatusChangeInprogress[serverRelativePath];
+    auto &lockStatusJobInProgress = _lockStatusChangeInprogress[serverRelativePath];
     if (lockStatusJobInProgress.contains(lockStatus)) {
         qCWarning(lcAccount) << "Already running a job with lockStatus:" << lockStatus << " for: " << serverRelativePath;
         return;
@@ -1071,19 +1091,19 @@ bool Account::fileCanBeUnlocked(SyncJournalDb * const journal,
     SyncJournalFileRecord record;
     if (journal->getFileRecord(folderRelativePath, &record)) {
         if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::AppLock)) {
-            qCDebug(lcAccount()) << folderRelativePath << "cannot be unlocked: app lock";
+            qCWarning(lcAccount()) << folderRelativePath << "cannot be unlocked: app lock";
             return false;
         }
 
         if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::UserLock) &&
             record._lockstate._lockOwnerId != sharedFromThis()->davUser()) {
-            qCDebug(lcAccount()) << folderRelativePath << "cannot be unlocked: user lock from" << record._lockstate._lockOwnerId;
+            qCWarning(lcAccount()) << folderRelativePath << "cannot be unlocked: user lock from" << record._lockstate._lockOwnerId;
             return false;
         }
 
         if (record._lockstate._lockOwnerType == static_cast<int>(SyncFileItem::LockOwnerType::TokenLock) &&
             record._lockstate._lockToken.isEmpty()) {
-            qCDebug(lcAccount()) << folderRelativePath << "cannot be unlocked: token lock without known token";
+            qCWarning(lcAccount()) << folderRelativePath << "cannot be unlocked: token lock without known token";
             return false;
         }
 
@@ -1379,7 +1399,14 @@ void Account::setUploadLimitSetting(const AccountNetworkTransferLimitSetting set
         return;
     }
 
-    _uploadLimitSetting = setting;
+    auto targetSetting = setting;
+
+    if (setting == AccountNetworkTransferLimitSetting::LegacyGlobalLimit) {
+        qCInfo(lcAccount) << "Upload limit setting was requested to be set to the legacy global limit, falling back to unlimited";
+        targetSetting = AccountNetworkTransferLimitSetting::NoLimit;
+    }
+
+    _uploadLimitSetting = targetSetting;
     emit uploadLimitSettingChanged();
 }
 
@@ -1393,8 +1420,15 @@ void Account::setDownloadLimitSetting(const AccountNetworkTransferLimitSetting s
     if (setting == _downloadLimitSetting) {
         return;
     }
-    
-    _downloadLimitSetting = setting;
+
+    auto targetSetting = setting;
+
+    if (setting == AccountNetworkTransferLimitSetting::LegacyGlobalLimit) {
+        qCInfo(lcAccount) << "Download limit setting was requested to be set to the legacy global limit, falling back to unlimited";
+        targetSetting = AccountNetworkTransferLimitSetting::NoLimit;
+    }
+
+    _downloadLimitSetting = targetSetting;
     emit downloadLimitSettingChanged();
 }
 

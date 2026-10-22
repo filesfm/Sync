@@ -1,15 +1,6 @@
 /*
- * Copyright (C) by Felix Weilbach <felix.weilbach@nextcloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "ocsuserstatusconnector.h"
@@ -30,6 +21,8 @@
 #include <qjsonarray.h>
 #include <qjsonobject.h>
 #include <qloggingcategory.h>
+
+using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -68,26 +61,26 @@ QString onlineStatusToString(OCC::UserStatus::OnlineStatus status)
     return QStringLiteral("online");
 }
 
-OCC::Optional<OCC::ClearAt> jsonExtractClearAt(QJsonObject jsonObject)
+OCC::Optional<OCC::ClearAt> jsonExtractClearAt(const QJsonObject &jsonObject)
 {
     OCC::Optional<OCC::ClearAt> clearAt {};
-    if (jsonObject.contains("clearAt") && !jsonObject.value("clearAt").isNull()) {
+    if (jsonObject.contains("clearAt"_L1) && !jsonObject.value("clearAt"_L1).isNull()) {
         OCC::ClearAt clearAtValue;
         clearAtValue._type = OCC::ClearAtType::Timestamp;
-        clearAtValue._timestamp = jsonObject.value("clearAt").toInt();
+        clearAtValue._timestamp = jsonObject.value("clearAt"_L1).toInt();
         clearAt = clearAtValue;
     }
     return clearAt;
 }
 
-OCC::UserStatus jsonExtractUserStatus(QJsonObject json)
+OCC::UserStatus jsonExtractUserStatus(const QJsonObject &json)
 {
     const auto clearAt = jsonExtractClearAt(json);
 
-    const OCC::UserStatus userStatus(json.value("messageId").toString(),
-        json.value("message").toString().trimmed(),
-        json.value("icon").toString().trimmed(), stringToUserOnlineStatus(json.value("status").toString()),
-        json.value("messageIsPredefined").toBool(false), clearAt);
+    const OCC::UserStatus userStatus(json.value("messageId"_L1).toString(),
+        json.value("message"_L1).toString().trimmed(),
+        json.value("icon"_L1).toString().trimmed(), stringToUserOnlineStatus(json.value("status"_L1).toString()),
+        json.value("messageIsPredefined"_L1).toBool(false), clearAt);
 
     return userStatus;
 }
@@ -101,7 +94,7 @@ OCC::UserStatus jsonToUserStatus(const QJsonDocument &json)
         { "messageIsPredefined", "false" },
         { "statusIsUserDefined", "false" }
     };
-    const auto retrievedData = json.object().value("ocs").toObject().value("data").toObject(defaultValues);
+    const auto retrievedData = json.object().value("ocs"_L1).toObject().value("data"_L1).toObject(defaultValues);
     return jsonExtractUserStatus(retrievedData);
 }
 
@@ -109,9 +102,9 @@ quint64 clearAtEndOfToTimestamp(const OCC::ClearAt &clearAt)
 {
     Q_ASSERT(clearAt._type == OCC::ClearAtType::EndOf);
 
-    if (clearAt._endof == "day") {
+    if (clearAt._endof == "day"_L1) {
         return QDate::currentDate().addDays(1).startOfDay().toSecsSinceEpoch();
-    } else if (clearAt._endof == "week") {
+    } else if (clearAt._endof == "week"_L1) {
         const auto days = Qt::Sunday - QDate::currentDate().dayOfWeek();
         return QDate::currentDate().addDays(days + 1).startOfDay().toSecsSinceEpoch();
     }
@@ -155,16 +148,16 @@ OCC::Optional<OCC::ClearAt> jsonToClearAt(QJsonObject jsonObject)
 {
     OCC::Optional<OCC::ClearAt> clearAt;
 
-    if (jsonObject.value("clearAt").isObject() && !jsonObject.value("clearAt").isNull()) {
+    if (jsonObject.value("clearAt"_L1).isObject() && !jsonObject.value("clearAt"_L1).isNull()) {
         OCC::ClearAt clearAtValue;
-        const auto clearAtObject = jsonObject.value("clearAt").toObject();
-        const auto typeValue = clearAtObject.value("type").toString("period");
-        if (typeValue == "period") {
-            const auto timeValue = clearAtObject.value("time").toInt(0);
+        const auto clearAtObject = jsonObject.value("clearAt"_L1).toObject();
+        const auto typeValue = clearAtObject.value("type"_L1).toString(u"period"_s);
+        if (typeValue == "period"_L1) {
+            const auto timeValue = clearAtObject.value("time"_L1).toInt(0);
             clearAtValue._type = OCC::ClearAtType::Period;
             clearAtValue._period = timeValue;
-        } else if (typeValue == "end-of") {
-            const auto timeValue = clearAtObject.value("time").toString("day");
+        } else if (typeValue == "end-of"_L1) {
+            const auto timeValue = clearAtObject.value("time"_L1).toString(u"day"_s);
             clearAtValue._type = OCC::ClearAtType::EndOf;
             clearAtValue._endof = timeValue;
         } else {
@@ -181,9 +174,9 @@ OCC::UserStatus jsonToUserStatus(QJsonObject jsonObject)
     const auto clearAt = jsonToClearAt(jsonObject);
 
     OCC::UserStatus userStatus(
-        jsonObject.value("id").toString("no-id"),
-        jsonObject.value("message").toString("No message"),
-        jsonObject.value("icon").toString("no-icon"),
+        jsonObject.value("id"_L1).toString(u"no-id"_s),
+        jsonObject.value("message"_L1).toString(u"No message"_s),
+        jsonObject.value("icon"_L1).toString(u"no-icon"_s),
         OCC::UserStatus::OnlineStatus::Online,
         true,
         clearAt);
@@ -298,7 +291,7 @@ void OcsUserStatusConnector::onPredefinedStatusesFetched(const QJsonDocument &js
         emit error(Error::CouldNotFetchPredefinedUserStatuses);
         return;
     }
-    const auto jsonData = json.object().value("ocs").toObject().value("data");
+    const auto jsonData = json.object().value("ocs"_L1).toObject().value("data"_L1);
     Q_ASSERT(jsonData.isArray());
     if (!jsonData.isArray()) {
         return;
@@ -366,7 +359,11 @@ void OcsUserStatusConnector::setUserStatusMessageCustom(const UserStatus &userSt
     _setMessageJob->setVerb(JsonApiJob::Verb::Put);
     // Set body
     QJsonObject dataObject;
-    dataObject.insert("statusIcon", userStatus.icon());
+    QJsonValue statusIcon;
+    if (!userStatus.icon().isEmpty()) {
+        statusIcon = userStatus.icon();
+    }
+    dataObject.insert("statusIcon", statusIcon);
     dataObject.insert("message", userStatus.message());
     const auto clearAt = userStatus.clearAt();
     if (clearAt) {

@@ -1,33 +1,16 @@
 /*
- * Copyright (C) by Klaas Freitag <freitag@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "clientproxy.h"
-
 #include "configfile.h"
+
 #include <QLoggingCategory>
 #include <QUrl>
 #include <QThreadPool>
 #include <QSettings>
-
-namespace {
-    constexpr auto proxyTypeC = "Proxy/type";
-    constexpr auto proxyHostC = "Proxy/host";
-    constexpr auto proxyPortC = "Proxy/port";
-    constexpr auto proxyUserC = "Proxy/user";
-    constexpr auto proxyPassC = "Proxy/pass";
-    constexpr auto proxyNeedsAuthC = "Proxy/needsAuth";
-}
 
 namespace OCC {
 
@@ -153,6 +136,19 @@ void ClientProxy::saveProxyConfigurationFromSettings(const QSettings &settings)
                             settings.value(QLatin1String(proxyNeedsAuthC)).toBool(),
                             settings.value(QLatin1String(proxyUserC)).toString(),
                             settings.value(QLatin1String(proxyPassC)).toString());
+}
+
+void ClientProxy::cleanupGlobalNetworkConfiguration()
+{
+    OCC::ConfigFile configFile;
+    QSettings settings(configFile.configFile(), QSettings::IniFormat);
+    settings.remove(proxyTypeC);
+    settings.remove(proxyHostC);
+    settings.remove(proxyPortC);
+    settings.remove(proxyUserC);
+    settings.remove(proxyPassC);
+    settings.remove(proxyNeedsAuthC);
+    settings.sync();
 }
 
 void ClientProxy::lookupSystemProxyAsync(const QUrl &url, QObject *dst, const char *slot)

@@ -1,17 +1,8 @@
 /*
- * Copyright (C) by Daniel Molkentin <danimo@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2013 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
-
 
 #ifndef SERVERCONNECTION_H
 #define SERVERCONNECTION_H
@@ -108,10 +99,6 @@ class OWNCLOUDSYNC_EXPORT Account : public QObject
     Q_PROPERTY(QByteArray encryptionCertificateFingerprint READ encryptionCertificateFingerprint WRITE setEncryptionCertificateFingerprint NOTIFY encryptionCertificateFingerprintChanged)
 
 public:
-    // For lenient credential invalidation (exponential backoff)
-    int _consecutiveAuthFailures = 0;
-    qint64 _authFailureStartTime = 0;
-
     // We need to decide whether to use the client's global proxy settings or whether to use
     // a specific setting for each account. Hence this enum
     enum class AccountNetworkProxySetting {
@@ -121,8 +108,8 @@ public:
     Q_ENUM(AccountNetworkProxySetting)
 
     enum class AccountNetworkTransferLimitSetting {
-        GlobalLimit = -2,
-        AutoLimit, // Value under 0 is interpreted as auto in general
+        LegacyGlobalLimit = -2, // Until 3.17.0 a value of -2 was interpreted as "Use global network settings", it's now used to fall back to "No limit".  See also GH#8743
+        AutoLimit = -1, // Value under 0 is interpreted as auto in general
         NoLimit,
         ManualLimit,
     };
@@ -144,6 +131,8 @@ public:
     [[nodiscard]] QString davUser() const;
     void setDavUser(const QString &newDavUser);
 
+    [[nodiscard]] QString userFromCredentials() const;
+
     [[nodiscard]] QString davDisplayName() const;
     void setDavDisplayName(const QString &newDisplayName);
 
@@ -154,6 +143,9 @@ public:
 
     /// The name of the account as shown in the toolbar
     [[nodiscard]] QString displayName() const;
+
+    /// The name of the account as shown in the windows shortcut explorer
+    [[nodiscard]] QString shortcutName() const;
 
     /// User id in a form 'user@example.de, optionally port is added (if it is not 80 or 443)
     [[nodiscard]] QString userIdAtHostWithPort() const;
@@ -333,7 +325,7 @@ public:
 
     /// Used in RemoteWipe
     void retrieveAppPassword();
-    void writeAppPasswordOnce(QString appPassword);
+    void writeAppPasswordOnce(const QString &appPassword);
     void deleteAppPassword();
 
     void deleteAppToken();
@@ -585,8 +577,8 @@ public:
     bool _proxyNeedsAuth = false;
     QString _proxyUser;
     QString _proxyPassword;
-    AccountNetworkTransferLimitSetting _uploadLimitSetting = AccountNetworkTransferLimitSetting::GlobalLimit;
-    AccountNetworkTransferLimitSetting _downloadLimitSetting = AccountNetworkTransferLimitSetting::GlobalLimit;
+    AccountNetworkTransferLimitSetting _uploadLimitSetting = AccountNetworkTransferLimitSetting::NoLimit;
+    AccountNetworkTransferLimitSetting _downloadLimitSetting = AccountNetworkTransferLimitSetting::NoLimit;
     unsigned int _uploadLimit = 0;
     unsigned int _downloadLimit = 0;
     bool _serverHasValidSubscription = false;

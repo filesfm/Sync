@@ -1,3 +1,8 @@
+/*
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
+ */
+
 #include <QLoggingCategory>
 #include <QSignalSpy>
 #include <QTest>
@@ -194,7 +199,10 @@ bool CredentialsStub::ready() const
     return false;
 }
 
-void CredentialsStub::fetchFromKeychain() { }
+void CredentialsStub::fetchFromKeychain(const QString &appName)
+{
+    Q_UNUSED(appName)
+}
 
 void CredentialsStub::askFromUser() { }
 

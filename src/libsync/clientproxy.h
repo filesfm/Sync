@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Klaas Freitag <freitag@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #ifndef CLIENTPROXY_H
@@ -23,6 +15,7 @@
 #include <csync.h>
 #include "common/utility.h"
 #include "owncloudlib.h"
+#include "account.h"
 
 namespace OCC {
 
@@ -44,9 +37,17 @@ public:
     static QString printQNetworkProxy(const QNetworkProxy &proxy);
     static const char *proxyTypeToCStr(QNetworkProxy::ProxyType type);
 
+    static constexpr char proxyTypeC[] = "Proxy/type";
+    static constexpr char proxyHostC[] = "Proxy/host";
+    static constexpr char proxyPortC[] = "Proxy/port";
+    static constexpr char proxyUserC[] = "Proxy/user";
+    static constexpr char proxyPassC[] = "Proxy/pass";
+    static constexpr char proxyNeedsAuthC[] = "Proxy/needsAuth";
+
 public slots:
     void setupQtProxyFromConfig();
     void saveProxyConfigurationFromSettings(const QSettings &settings);
+    void cleanupGlobalNetworkConfiguration();
 };
 
 class OWNCLOUDSYNC_EXPORT SystemProxyRunnable : public QObject, public QRunnable

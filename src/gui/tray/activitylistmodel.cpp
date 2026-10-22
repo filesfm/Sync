@@ -665,6 +665,27 @@ void ActivityListModel::checkAndRemoveSeenActivities(const OCC::ActivityList &ne
     }
 }
 
+void ActivityListModel::removeOutdatedNotifications(const OCC::ActivityList &receivedNotifications)
+{
+    ActivityList activitiesToRemove;
+    for (const auto &activity : _finalList) {
+        if (activity._type != Activity::NotificationType || receivedNotifications.contains(activity)) {
+            continue;
+        }
+
+        qCDebug(lcActivity).nospace() << "marking notification activity for removal"
+            << " activity.type=" << activity._type
+            << " activity.id=" << activity._id
+            << " activity.objectType=" << activity._objectType
+            << " activity.accName=" << activity._accName;
+        activitiesToRemove.push_back(activity);
+    }
+
+    for (const auto &toRemove : activitiesToRemove) {
+        removeActivityFromActivityList(toRemove);
+    }
+}
+
 void ActivityListModel::slotTriggerDefaultAction(const int activityIndex)
 {
     if (activityIndex < 0 || activityIndex >= _finalList.size()) {

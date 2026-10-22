@@ -1,8 +1,11 @@
 /*
- *    This software is in the public domain, furnished "as is", without technical
- *    support, and with no warranty, express or implied, as to its usefulness for
- *    any purpose.
+ * SPDX-FileCopyrightText: 2020 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2020 ownCloud GmbH
+ * SPDX-License-Identifier: CC0-1.0
  *
+ * This software is in the public domain, furnished "as is", without technical
+ * support, and with no warranty, express or implied, as to its usefulness for
+ * any purpose.
  */
 
 #include "syncenginetestutils.h"
@@ -256,10 +259,17 @@ void FileInfo::setE2EE(const QString &relativePath, const bool enable)
     file->isEncrypted = enable;
 }
 
-FileInfo *FileInfo::find(PathComponents pathComponents, const bool invalidateEtags)
+void FileInfo::setFolderQuota(const QString &relativePath, const FolderQuota newQuota, const EtagsAction invalidateEtags)
+{
+    const auto file = find(relativePath, invalidateEtags);
+    Q_ASSERT(file);
+    file->folderQuota = newQuota;
+}
+
+FileInfo *FileInfo::find(PathComponents pathComponents, const EtagsAction invalidateEtags)
 {
     if (pathComponents.isEmpty()) {
-        if (invalidateEtags) {
+        if (invalidateEtags == EtagsAction::Invalidate) {
             etag = generateEtag();
         }
         return this;
@@ -277,7 +287,7 @@ FileInfo *FileInfo::find(PathComponents pathComponents, const bool invalidateEta
     return nullptr;
 }
 
-FileInfo FileInfo::findRecursive(PathComponents pathComponents, const bool invalidateEtags)
+FileInfo FileInfo::findRecursive(PathComponents pathComponents, const EtagsAction invalidateEtags)
 {
     auto result = find({pathComponents.takeFirst()}, invalidateEtags);
     if (!result) {
@@ -347,7 +357,7 @@ void FileInfo::fixupParentPathRecursively()
 
 FileInfo *FileInfo::findInvalidatingEtags(PathComponents pathComponents)
 {
-    return find(std::move(pathComponents), true);
+    return find(std::move(pathComponents), EtagsAction::Invalidate);
 }
 
 FakePropfindReply::FakePropfindReply(FileInfo &remoteRootFileInfo, QNetworkAccessManager::Operation op, const QNetworkRequest &request, QObject *parent)
@@ -406,7 +416,16 @@ FakePropfindReply::FakePropfindReply(FileInfo &remoteRootFileInfo, QNetworkAcces
         xml.writeTextElement(davUri, QStringLiteral("getlastmodified"), stringDate);
         xml.writeTextElement(davUri, QStringLiteral("getcontentlength"), QString::number(fileInfo.size));
         xml.writeTextElement(davUri, QStringLiteral("getetag"), QStringLiteral("\"%1\"").arg(QString::fromLatin1(fileInfo.etag)));
-        xml.writeTextElement(ocUri, QStringLiteral("permissions"), !fileInfo.permissions.isNull() ? QString(fileInfo.permissions.toString()) : fileInfo.isShared ? QStringLiteral("SRDNVCKW") : QStringLiteral("RDNVCKW"));
+        xml.writeTextElement(ocUri, QStringLiteral("quota-available-bytes"), std::to_string(fileInfo.folderQuota.bytesAvailable));
+        xml.writeTextElement(ocUri, QStringLiteral("quota-used-bytes"), std::to_string(fileInfo.folderQuota.bytesUsed));
+        xml.writeTextElement(ocUri, QStringLiteral("permissions"), !fileInfo.permissions.isNull() ? QString(fileInfo.permissions.toString()) : fileInfo.isShared ? QStringLiteral("GSRDNVCKW") : QStringLiteral("GRDNVCKW"));
+        if (fileInfo.isShared) {
+            if (fileInfo.downloadForbidden) {
+                xml.writeTextElement(ocUri, QStringLiteral("share-attributes"), QStringLiteral("[{\"scope\":\"permissions\",\"key\":\"download\",\"value\":false}]"));
+            } else {
+                xml.writeTextElement(ocUri, QStringLiteral("share-attributes"), QStringLiteral("[{\"scope\":\"permissions\",\"key\":\"download\",\"value\":true}]"));
+            }
+        }
         xml.writeTextElement(ocUri, QStringLiteral("share-permissions"), QString::number(static_cast<int>(OCC::SharePermissions(OCC::SharePermissionRead |
                                                                                                                                 OCC::SharePermissionUpdate |
                                                                                                                                 OCC::SharePermissionCreate |
@@ -510,7 +529,7 @@ FileInfo *FakePutReply::perform(FileInfo &remoteRootFileInfo, const QNetworkRequ
         fileInfo = remoteRootFileInfo.create(fileName, putPayload.size(), putPayload.isEmpty() ? ' ' : putPayload.at(0));
     }
     fileInfo->lastModified = OCC::Utility::qDateTimeFromTime_t(request.rawHeader("X-OC-Mtime").toLongLong());
-    remoteRootFileInfo.find(fileName, /*invalidateEtags=*/true);
+    remoteRootFileInfo.find(fileName, /*invalidateEtags=*/FileInfo::EtagsAction::Invalidate);
     return fileInfo;
 }
 
@@ -624,7 +643,7 @@ QVector<FileInfo *> FakePutMultiFileReply::performMultiPart(FileInfo &remoteRoot
             fileInfo = remoteRootFileInfo.create(fileName, onePartBody.size(), onePartBody.at(0).toLatin1());
         }
         fileInfo->lastModified = OCC::Utility::qDateTimeFromTime_t(modtime);
-        remoteRootFileInfo.find(fileName, /*invalidateEtags=*/true);
+        remoteRootFileInfo.find(fileName, /*invalidateEtags=*/FileInfo::EtagsAction::Invalidate);
         result.push_back(fileInfo);
     }
     return result;
@@ -951,7 +970,7 @@ FileInfo *FakeChunkMoveReply::perform(FileInfo &uploadsFileInfo, FileInfo &remot
         fileInfo = remoteRootFileInfo.create(fileName, size, payload);
     }
     fileInfo->lastModified = OCC::Utility::qDateTimeFromTime_t(request.rawHeader("X-OC-Mtime").toLongLong());
-    remoteRootFileInfo.find(fileName, /*invalidateEtags=*/true);
+    remoteRootFileInfo.find(fileName, /*invalidateEtags=*/FileInfo::EtagsAction::Invalidate);
 
     return fileInfo;
 }

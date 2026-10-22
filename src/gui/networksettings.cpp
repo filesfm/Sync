@@ -163,14 +163,14 @@ void NetworkSettings::loadProxySettings()
 
 void NetworkSettings::loadBWLimitSettings()
 {
-    const auto useGlobalLimit = !_account || _account->downloadLimitSetting() == Account::AccountNetworkTransferLimitSetting::GlobalLimit;
+    const auto useGlobalLimit = !_account || _account->downloadLimitSetting() == Account::AccountNetworkTransferLimitSetting::LegacyGlobalLimit;
     const auto cfgFile = ConfigFile();
     const auto useDownloadLimit = useGlobalLimit ? cfgFile.useDownloadLimit() : static_cast<std::underlying_type_t<Account::AccountNetworkTransferLimitSetting>>(_account->downloadLimitSetting());
     const auto downloadLimit = useGlobalLimit ? cfgFile.downloadLimit() : _account->downloadLimit();
     const auto useUploadLimit = useGlobalLimit ? cfgFile.useUploadLimit() : static_cast<std::underlying_type_t<Account::AccountNetworkTransferLimitSetting>>(_account->uploadLimitSetting());
     const auto uploadLimit = useGlobalLimit ? cfgFile.uploadLimit() : _account->uploadLimit();
 
-    if (_account && _account->downloadLimitSetting() == Account::AccountNetworkTransferLimitSetting::GlobalLimit) {
+    if (_account && _account->downloadLimitSetting() == Account::AccountNetworkTransferLimitSetting::LegacyGlobalLimit) {
         _ui->globalDownloadSettingsRadioButton->setChecked(true);
     } else if (useDownloadLimit >= 1) {
         _ui->downloadLimitRadioButton->setChecked(true);
@@ -181,7 +181,7 @@ void NetworkSettings::loadBWLimitSettings()
     }
     _ui->downloadSpinBox->setValue(downloadLimit);
 
-    if (_account && _account->uploadLimitSetting() == Account::AccountNetworkTransferLimitSetting::GlobalLimit) {
+    if (_account && _account->uploadLimitSetting() == Account::AccountNetworkTransferLimitSetting::LegacyGlobalLimit) {
         _ui->globalUploadSettingsRadioButton->setChecked(true);
     } else if (useUploadLimit >= 1) {
         _ui->uploadLimitRadioButton->setChecked(true);

@@ -1,15 +1,7 @@
 /*
- * Copyright (C) by Olivier Goffart <ogoffart@owncloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2017 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-FileCopyrightText: 2014 ownCloud GmbH
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "config.h"
@@ -248,7 +240,7 @@ void PropagateUploadFileCommon::start()
     connect(_uploadEncryptedHelper, &PropagateUploadEncrypted::finalized,
             this, &PropagateUploadFileCommon::setupEncryptedFile);
     connect(_uploadEncryptedHelper, &PropagateUploadEncrypted::error, [this] {
-        qCDebug(lcPropagateUpload) << "Error setting up encryption.";
+        qCWarning(lcPropagateUpload) << "Error setting up encryption.";
         done(SyncFileItem::FatalError, tr("Failed to upload encrypted file."));
     });
     _uploadEncryptedHelper->start();
@@ -693,7 +685,7 @@ void PropagateUploadFileCommon::commonErrorHandling(AbstractNetworkJob *job)
 {
     QByteArray replyContent;
     QString errorString = job->errorStringParsingBody(&replyContent);
-    qCDebug(lcPropagateUpload) << replyContent; // display the XML error in the debug
+    qCWarning(lcPropagateUpload) << replyContent; // display the XML error in the debug
 
     if (_item->_httpErrorCode == 412) {
         // Precondition Failed: Either an etag or a checksum mismatch.
@@ -761,8 +753,9 @@ void PropagateUploadFileCommon::slotJobDestroyed(QObject *job)
 // This function is used whenever there is an error occurring and jobs might be in progress
 void PropagateUploadFileCommon::abortWithError(SyncFileItem::Status status, const QString &error)
 {
-    if (_aborting)
+    if (_aborting) {
         return;
+    }
     abort(AbortType::Synchronous);
     done(status, error);
 }
@@ -826,10 +819,6 @@ void PropagateUploadFileCommon::finalize()
     auto quotaIt = propagator()->_folderQuota.find(QFileInfo(_item->_file).path());
     if (quotaIt != propagator()->_folderQuota.end())
         quotaIt.value() -= _fileToUpload._size;
-
-    if (_item->isEncrypted() && _uploadingEncrypted) {
-        _item->_e2eCertificateFingerprint = propagator()->account()->encryptionCertificateFingerprint();
-    }
 
     // Update the database entry
     const auto result = propagator()->updateMetadata(*_item, Vfs::DatabaseMetadata);

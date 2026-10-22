@@ -1,15 +1,6 @@
 /*
- * Copyright (C) by Kevin Ottens <kevin.ottens@nextcloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "vfs_xattr.h"
@@ -69,15 +60,17 @@ bool VfsXAttr::isHydrating() const
     return false;
 }
 
-Result<void, QString> VfsXAttr::updateMetadata(const QString &filePath, time_t modtime, qint64, const QByteArray &)
+OCC::Result<OCC::Vfs::ConvertToPlaceholderResult, QString> VfsXAttr::updateMetadata(const SyncFileItem &syncItem, const QString &filePath, const QString &replacesFile)
 {
-    if (modtime <= 0) {
+    Q_UNUSED(replacesFile)
+
+    if (syncItem._modtime <= 0) {
         return {tr("Error updating metadata due to invalid modification time")};
     }
 
-    qCDebug(lcVfsXAttr()) << "setModTime" << filePath << modtime;
-    FileSystem::setModTime(filePath, modtime);
-    return {};
+    qCDebug(lcVfsXAttr()) << "setModTime" << filePath << syncItem._modtime;
+    FileSystem::setModTime(filePath, syncItem._modtime);
+    return {OCC::Vfs::ConvertToPlaceholderResult::Ok};
 }
 
 Result<void, QString> VfsXAttr::createPlaceholder(const SyncFileItem &item)
@@ -156,7 +149,7 @@ bool VfsXAttr::statTypeVirtualFile(csync_file_stat_t *stat, void *statData)
     Q_ASSERT(!stat->path.startsWith('/'));
 
     const auto path = QByteArray(*parentPath + '/' + stat->path);
-    const auto pin = [=] {
+    const auto pin = [=, this] {
         const auto absolutePath = QString::fromUtf8(path);
         Q_ASSERT(absolutePath.startsWith(params().filesystemPath.toUtf8()));
         const auto folderPath = absolutePath.mid(params().filesystemPath.length());

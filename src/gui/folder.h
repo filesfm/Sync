@@ -136,6 +136,7 @@ public:
      */
     [[nodiscard]] QString alias() const;
     [[nodiscard]] QString shortGuiRemotePathOrAppName() const; // since 2.0 we don't want to show aliases anymore, show the path instead
+    [[nodiscard]] QString sidebarDisplayName() const;
 
     /**
      * short local path to display on the GUI  (native separators)

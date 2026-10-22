@@ -127,7 +127,8 @@ bool WebFlowCredentials::ready() const {
     return _ready;
 }
 
-void WebFlowCredentials::fetchFromKeychain() {
+void WebFlowCredentials::fetchFromKeychain(const QString &appName) {
+    Q_UNUSED(appName)
     _wasFetched = true;
 
     // Make sure we get the user from the config file

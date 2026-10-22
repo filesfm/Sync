@@ -1,15 +1,6 @@
 /*
- * Copyright (C) by Michael Schuster <michael@schuster.ms>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "account.h"
@@ -39,22 +30,6 @@ static void addSettingsToJob(Account *account, QKeychain::Job *job)
 }
 #endif
 
-#ifdef Q_OS_WIN
-void jobKeyPrependAppName(QString &key)
-{
-    // NOTE: The following is normally done in AbstractCredentials::keychainKey
-    //       when an _account is specified by our other ctr overload (see 'kck' in this file).
-
-    // On Windows the credential keys aren't namespaced properly
-    // by qtkeychain. To work around that we manually add namespacing
-    // to the generated keys. See #6125.
-    // It's safe to do that since the key format is changing for 2.4
-    // anyway to include the account ids. That means old keys can be
-    // migrated to new namespaced keys on windows for 2.4.
-    key.prepend(QCoreApplication::applicationName() + "_");
-}
-#endif
-
 /*
 * Job
 */
@@ -62,6 +37,7 @@ Job::Job(QObject *parent)
     : QObject(parent)
 {
     _serviceName = Theme::instance()->appName();
+    _appName = QCoreApplication::applicationName();
 }
 
 Job::~Job()
@@ -111,6 +87,20 @@ void Job::setAutoDelete(bool autoDelete)
 {
     _autoDelete = autoDelete;
 }
+
+void Job::setAppName(const QString &appName)
+{
+    _appName = appName;
+}
+
+#ifdef Q_OS_WIN
+void Job::jobKeyPrependAppName(QString &key)
+{
+    // NOTE: The following is normally done in AbstractCredentials::keychainKey
+    //       when an _account is specified by our other ctr overload (see 'kck' in this file).
+    key.prepend(_appName + "_");
+}
+#endif
 
 /*
 * WriteJob
@@ -171,6 +161,8 @@ void WriteJob::slotWriteJobDone(QKeychain::Job *incomingJob)
             qCWarning(lcKeychainChunk) << "Error while writing" << writeJob->key() << "chunk" << writeJob->errorString();
             _chunkBuffer.clear();
         }
+
+        writeJob->deleteLater();
     }
 
     // write a chunk if there is any in the buffer
@@ -191,9 +183,7 @@ void WriteJob::slotWriteJobDone(QKeychain::Job *incomingJob)
 
         // keep the limit
         if (_chunkCount > KeychainChunk::MaxChunks) {
-            qCWarning(lcKeychainChunk) << "Maximum chunk count exceeded while writing" << writeJob->key() << "chunk" << QString::number(index) << "cutting off after" << QString::number(KeychainChunk::MaxChunks) << "chunks";
-
-            writeJob->deleteLater();
+            qCWarning(lcKeychainChunk) << "Maximum chunk count exceeded while writing chunk" << QString::number(index) << "cutting off after" << QString::number(KeychainChunk::MaxChunks) << "chunks";
 
             _chunkBuffer.clear();
 
@@ -231,8 +221,6 @@ void WriteJob::slotWriteJobDone(QKeychain::Job *incomingJob)
             deleteLater();
         }
     }
-
-    writeJob->deleteLater();
 }
 
 /*
@@ -267,7 +255,8 @@ void ReadJob::start()
     const QString kck = _account ? AbstractCredentials::keychainKey(
             _account->url().toString(),
             _key,
-            _keychainMigration ? QString() : _account->id()
+            _keychainMigration ? QString() : _account->id(),
+            _appName
         ) : _key;
 
     auto job = new QKeychain::ReadPasswordJob(_serviceName, this);

@@ -1,15 +1,6 @@
 /*
- * Copyright 2021 (c) Matthieu Gallien <matthieu.gallien@nextcloud.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ * SPDX-FileCopyrightText: 2021 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: GPL-2.0-or-later
  */
 
 #include "bulkpropagatorjob.h"
@@ -124,13 +115,13 @@ bool BulkPropagatorJob::handleBatchSize()
 
     // we already tried to upload with half of the batch size
     if(_currentBatchSize == halfBatchSize) {
-        qCDebug(lcBulkPropagatorJob) << "There was another error, stop syncing now!";
+        qCWarning(lcBulkPropagatorJob) << "There was another error, stop syncing now!";
         return false;
     }
 
     // try to upload with half of the batch size
     _currentBatchSize = halfBatchSize;
-    qCDebug(lcBulkPropagatorJob) << "There was an error, sync again with bulk upload batch size cut to half!";
+    qCWarning(lcBulkPropagatorJob) << "There was an error, sync again with bulk upload batch size cut to half!";
     return true;
 }
 
@@ -188,7 +179,7 @@ void BulkPropagatorJob::doStartUpload(SyncFileItemPtr item,
         const auto renameSuccess = QFile::rename(originalFilePathAbsolute, newFilePathAbsolute);
 
         if (!renameSuccess) {
-            done(item, SyncFileItem::NormalError, "File contains trailing spaces and couldn't be renamed", ErrorCategory::GenericError);
+            done(item, SyncFileItem::NormalError, tr("File contains leading or trailing spaces and couldn't be renamed"), ErrorCategory::GenericError);
             return;
         }
 
