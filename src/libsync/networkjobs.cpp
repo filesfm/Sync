@@ -118,10 +118,10 @@ bool RequestEtagJob::finished()
                 }
             }
         }
-        emit etagRetrieved(etag, QDateTime::fromString(QString::fromUtf8(_responseTimestamp), Qt::RFC2822Date));
-        emit finishedWithResult(etag);
+        Q_EMIT etagRetrieved(etag, QDateTime::fromString(QString::fromUtf8(_responseTimestamp), Qt::RFC2822Date));
+        Q_EMIT finishedWithResult(etag);
     } else {
-        emit finishedWithResult(HttpError{ httpCode, errorString() });
+        Q_EMIT finishedWithResult(HttpError{ httpCode, errorString() });
     }
     return true;
 }
@@ -280,7 +280,7 @@ bool LsColXMLParser::parse(const QByteArray &xml, QHash<QString, ExtraFolderInfo
                     if (currentHref.endsWith('/')) {
                         currentHref.chop(1);
                     }
-                    emit directoryListingIterated(currentHref, currentHttp200Properties);
+                    Q_EMIT directoryListingIterated(currentHref, currentHttp200Properties);
                     currentHref.clear();
                     currentHttp200Properties.clear();
                 } else if (reader.name() == QStringLiteral("propstat")) {
@@ -305,8 +305,8 @@ bool LsColXMLParser::parse(const QByteArray &xml, QHash<QString, ExtraFolderInfo
         qCWarning(lcLsColJob) << "ERROR no WebDAV response?" << xml;
         return false;
     } else {
-        emit directoryListingSubfolders(folders);
-        emit finishedWithoutError();
+        Q_EMIT directoryListingSubfolders(folders);
+        Q_EMIT finishedWithoutError();
     }
     return true;
 }
@@ -561,16 +561,11 @@ bool LsColJob::finished()
         const auto expectedPath = reply()->request().url().path(); // something like "/owncloud/remote.php/dav/folder"
         if (!parser.parse(reply()->readAll(), &_folderInfos, expectedPath)) {
             // XML parse error
-            emit finishedWithError(reply());
+            Q_EMIT finishedWithError(reply());
         }
-
-        // processEvents is called AFTER all reply() accesses. A pending deleteLater()
-        // processed inside it can zero the QPointer and caused a SIGSEGV when it was
-        // placed before the reply reads. Do not abuse: it affects QObject lifetimes.
-        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
     } else {
         // wrong content type, wrong HTTP code or any other network error
-        emit finishedWithError(reply());
+        Q_EMIT finishedWithError(reply());
     }
 
     this->deleteLater();
@@ -607,7 +602,7 @@ void CheckServerJob::onTimedOut()
 {
     qCWarning(lcCheckServerJob) << "TIMEOUT";
     if (reply() && reply()->isRunning()) {
-        emit timeout(reply()->url());
+        Q_EMIT timeout(reply()->url());
     } else if (!reply()) {
         qCWarning(lcCheckServerJob) << "Timeout even there was no reply?";
     }
@@ -696,7 +691,7 @@ bool CheckServerJob::finished()
     int httpStatus = reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (body.isEmpty() || httpStatus != 200) {
         qCWarning(lcCheckServerJob) << "error: status.php replied " << httpStatus << body;
-        emit instanceNotFound(reply());
+        Q_EMIT instanceNotFound(reply());
     } else {
         QJsonParseError error{};
         auto status = QJsonDocument::fromJson(body, &error);
@@ -707,10 +702,10 @@ bool CheckServerJob::finished()
 
         qCInfo(lcCheckServerJob) << "status.php returns: " << status << " " << reply()->error() << " Reply: " << reply();
         if (status.object().contains("installed")) {
-            emit instanceFound(_serverUrl, status.object());
+            Q_EMIT instanceFound(_serverUrl, status.object());
         } else {
             qCWarning(lcCheckServerJob) << "No proper answer on " << reply()->url();
-            emit instanceNotFound(reply());
+            Q_EMIT instanceNotFound(reply());
         }
     }
     return true;
@@ -735,7 +730,7 @@ void CheckRedirectCostFreeUrlJob::onTimedOut()
 {
     qCDebug(lcCheckRedirectCostFreeUrlJob) << "TIMEOUT";
     if (reply() && reply()->isRunning()) {
-        emit timeout(reply()->url());
+        Q_EMIT timeout(reply()->url());
     } else if (!reply()) {
         qCDebug(lcCheckRedirectCostFreeUrlJob) << "Timeout without a reply?";
     }
@@ -749,7 +744,7 @@ bool CheckRedirectCostFreeUrlJob::finished()
         const auto redirectionTarget = reply()->attribute(QNetworkRequest::RedirectionTargetAttribute).toUrl();
         qCDebug(lcCheckRedirectCostFreeUrlJob) << "Redirecting cost-free URL" << reply()->url() << " to" << redirectionTarget;
     }
-    emit jobFinished(statusCode);
+    Q_EMIT jobFinished(statusCode);
     return true;
 }
 /*********************************************************************************************/
@@ -818,17 +813,17 @@ bool PropfindJob::finished()
 
         if (const auto res = domDocument.setContent(reply(), QDomDocument::ParseOption::UseNamespaceProcessing); !res) {
             qCWarning(lcPropfindJob) << "XML parser error: " << res.errorMessage << res.errorLine << res.errorColumn;
-            emit finishedWithError(reply());
+            Q_EMIT finishedWithError(reply());
 
         } else {
             const auto parsedItems = processPropfindDomDocument(domDocument);
-            emit result(parsedItems);
+            Q_EMIT result(parsedItems);
         }
 
     } else {
         qCWarning(lcPropfindJob) << "*not* successful, http result code is" << http_result_code
                                  << (http_result_code == 302 ? reply()->header(QNetworkRequest::LocationHeader).toString() : QLatin1String(""));
-        emit finishedWithError(reply());
+        Q_EMIT finishedWithError(reply());
     }
 
     return true;
@@ -996,7 +991,7 @@ bool AvatarJob::finished()
             }
         }
     }
-    emit avatarPixmap(avImage);
+    Q_EMIT avatarPixmap(avImage);
     return true;
 }
 #endif
@@ -1066,11 +1061,11 @@ bool ProppatchJob::finished()
     int http_result_code = reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
 
     if (http_result_code == 207) {
-        emit success();
+        Q_EMIT success();
     } else {
         qCWarning(lcProppatchJob) << "*not* successful, http result code is" << http_result_code
                                   << (http_result_code == 302 ? reply()->header(QNetworkRequest::LocationHeader).toString() : QLatin1String(""));
-        emit finishedWithError();
+        Q_EMIT finishedWithError();
     }
     return true;
 }
@@ -1090,7 +1085,7 @@ void EntityExistsJob::start()
 
 bool EntityExistsJob::finished()
 {
-    emit exists(reply());
+    Q_EMIT exists(reply());
     return true;
 }
 
@@ -1118,15 +1113,17 @@ void JsonApiJob::start()
 
 bool JsonApiJob::finished()
 {
-    qCInfo(lcJsonApiJob) << "JsonApiJob of" << reply()->request().url() << "FINISHED WITH STATUS"
-                         << replyStatusString();
-
     int statusCode = 0;
     int httpStatusCode = reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    qCInfo(lcJsonApiJob) << "JsonApiJob of" << reply()->request().url()
+                         << "FINISHED WITH STATUS" << replyStatusString()
+                         << "with http status code" << httpStatusCode;
+
     if (reply()->error() != QNetworkReply::NoError) {
         qCWarning(lcJsonApiJob) << "Network error: " << path() << errorString() << reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute);
         statusCode = reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        emit jsonReceived(QJsonDocument(), statusCode);
+        Q_EMIT jsonReceived(QJsonDocument(), statusCode);
         return true;
     }
 
@@ -1139,7 +1136,7 @@ bool JsonApiJob::finished()
             statusCode = rexMatch.captured(1).toInt();
         }
     } else if(jsonStr.isEmpty() && httpStatusCode == notModifiedStatusCode){
-        qCWarning(lcJsonApiJob) << "Nothing changed so nothing to retrieve - status code: " << httpStatusCode;
+        qCDebug(lcJsonApiJob) << "Nothing changed so nothing to retrieve - status code: " << httpStatusCode;
         statusCode = httpStatusCode;
     } else {
         static const QRegularExpression rex(R"("statuscode":(\d+))");
@@ -1152,7 +1149,7 @@ bool JsonApiJob::finished()
 
     // save new ETag value
     if (const auto etagHeader = reply()->header(QNetworkRequest::ETagHeader); etagHeader.isValid()) {
-        emit etagResponseHeaderReceived(etagHeader.toByteArray(), statusCode);
+        Q_EMIT etagResponseHeaderReceived(etagHeader.toByteArray(), statusCode);
     }
 
     QJsonParseError error{};
@@ -1160,11 +1157,11 @@ bool JsonApiJob::finished()
     // empty or invalid response and status code is != 304 because jsonStr is expected to be empty
     if ((error.error != QJsonParseError::NoError || json.isNull()) && httpStatusCode != notModifiedStatusCode) {
         qCWarning(lcJsonApiJob) << "invalid JSON!" << jsonStr << error.errorString();
-        emit jsonReceived(json, statusCode);
+        Q_EMIT jsonReceived(json, statusCode);
         return true;
     }
 
-    emit jsonReceived(json, statusCode);
+    Q_EMIT jsonReceived(json, statusCode);
     return true;
 }
 
@@ -1173,7 +1170,6 @@ DetermineAuthTypeJob::DetermineAuthTypeJob(AccountPtr account, QObject *parent)
     : QObject(parent)
     , _account(account)
 {
-    useFlow2 = ConfigFile().forceLoginV2();
 }
 
 void DetermineAuthTypeJob::start()
@@ -1186,7 +1182,7 @@ void DetermineAuthTypeJob::start()
     // Don't reuse previous auth credentials
     req.setAttribute(QNetworkRequest::AuthenticationReuseAttribute, QNetworkRequest::Manual);
 
-    // Start three parallel requests
+    // Start two parallel requests
 
     // 1. determines whether it's a basic auth server
     auto get = _account->sendRequest("GET", _account->url(), req);
@@ -1194,15 +1190,10 @@ void DetermineAuthTypeJob::start()
     // 2. checks the HTTP auth method.
     auto propfind = _account->sendRequest("PROPFIND", _account->davUrl(), req);
 
-    // 3. Determines if the old flow has to be used (GS for now)
-    auto oldFlowRequired = new JsonApiJob(_account, "/ocs/v2.php/cloud/capabilities", this);
-
     get->setTimeout(30 * 1000);
     propfind->setTimeout(30 * 1000);
-    oldFlowRequired->setTimeout(30 * 1000);
     get->setIgnoreCredentialFailure(true);
     propfind->setIgnoreCredentialFailure(true);
-    oldFlowRequired->setIgnoreCredentialFailure(true);
 
     connect(get, &SimpleNetworkJob::finishedSignal, this, [this, get]() {
         const auto reply = get->reply();
@@ -1231,51 +1222,16 @@ void DetermineAuthTypeJob::start()
         _propfindDone = true;
         checkAllDone();
     });
-    connect(oldFlowRequired, &JsonApiJob::jsonReceived, this, [this](const QJsonDocument &json, int statusCode) {
-        if (statusCode == 200) {
-            _resultOldFlow = LoginFlowV2;
-
-            auto data = json.object().value("ocs").toObject().value("data").toObject().value("capabilities").toObject();
-            auto gs = data.value("globalscale");
-            if (gs != QJsonValue::Undefined) {
-                auto flow = gs.toObject().value("desktoplogin");
-                if (flow != QJsonValue::Undefined) {
-                    if (flow.toInt() == 1) {
-#ifdef WITH_WEBENGINE
-                        if(!this->useFlow2) {
-                            _resultOldFlow = WebViewFlow;
-                        } else {
-                            qCWarning(lcDetermineAuthTypeJob) << "Server only supports flow1, but this client was configured to only use flow2";
-                        }
-#else // WITH_WEBENGINE
-                        qCWarning(lcDetermineAuthTypeJob) << "Server does only support flow1, but this client was compiled without support for flow1";
-#endif // WITH_WEBENGINE
-                    }
-                }
-            }
-        } else {
-            _resultOldFlow = Basic;
-        }
-        if (_account->isPublicShareLink()) {
-            _resultOldFlow = Basic;
-        }
-        _oldFlowDone = true;
-        checkAllDone();
-    });
-
-    oldFlowRequired->start();
 }
 
 void DetermineAuthTypeJob::checkAllDone()
 {
-    // Do not conitunue until eve
-    if (!_getDone || !_propfindDone || !_oldFlowDone) {
+    if (!_getDone || !_propfindDone) {
         return;
     }
 
     Q_ASSERT(_resultGet != NoAuthType);
     Q_ASSERT(_resultPropfind != NoAuthType);
-    Q_ASSERT(_resultOldFlow != NoAuthType);
 
     auto result = _resultPropfind;
 
@@ -1283,9 +1239,6 @@ void DetermineAuthTypeJob::checkAllDone()
     // WebViewFlow > Basic
     if (_account->serverVersionInt() >= Account::makeServerVersion(12, 0, 0)) {
         result = WebViewFlow;
-        if (useFlow2) {
-            result = LoginFlowV2;
-        }
     }
 #endif // WITH_WEBENGINE
 
@@ -1294,16 +1247,6 @@ void DetermineAuthTypeJob::checkAllDone()
         result = LoginFlowV2;
     }
 
-#ifdef WITH_WEBENGINE
-    // If we determined that we need the webview flow (GS for example) then we switch to that
-    if (_resultOldFlow == WebViewFlow) {
-        result = WebViewFlow;
-        if (useFlow2) {
-            result = LoginFlowV2;
-        }
-    }
-#endif // WITH_WEBENGINE
-
     // If we determined that a simple get gave us an authentication required error
     // then the server enforces basic auth and we got no choice but to use this
     if (_resultGet == Basic) {
@@ -1311,7 +1254,7 @@ void DetermineAuthTypeJob::checkAllDone()
     }
 
     qCInfo(lcDetermineAuthTypeJob) << "Auth type for" << _account->davUrl() << "is" << result;
-    emit authType(result);
+    Q_EMIT authType(result);
     deleteLater();
 }
 
@@ -1330,7 +1273,7 @@ QNetworkReply *SimpleNetworkJob::startRequest(const QByteArray &verb, const QUrl
 
 bool SimpleNetworkJob::finished()
 {
-    emit finishedSignal(reply());
+    Q_EMIT finishedSignal(reply());
     return true;
 }
 
@@ -1361,7 +1304,7 @@ QNetworkReply *SimpleFileJob::startRequest(
 bool SimpleFileJob::finished()
 {
     qCInfo(lcSimpleFileJob) << _verb << "for" << reply()->request().url() << "FINISHED WITH STATUS" << replyStatusString();
-    emit finishedSignal(reply());
+    Q_EMIT finishedSignal(reply());
     return true;
 }
 
@@ -1390,13 +1333,13 @@ bool DeleteApiJob::finished()
 
     if (reply()->error() != QNetworkReply::NoError) {
         qCWarning(lcJsonApiJob) << "Network error: " << path() << errorString() << httpStatus;
-        emit result(httpStatus);
+        Q_EMIT result(httpStatus);
         return true;
     }
 
     const auto replyData = QString::fromUtf8(reply()->readAll());
     qCInfo(lcJsonApiJob()) << "TMX Delete Job" << replyData;
-    emit result(httpStatus);
+    Q_EMIT result(httpStatus);
     return SimpleFileJob::finished();
 }
 
@@ -1405,8 +1348,9 @@ void fetchPrivateLinkUrl(AccountPtr account, const QString &remotePath,
     std::function<void(const QString &url)> targetFun)
 {
     QString oldUrl;
-    if (!numericFileId.isEmpty())
+    if (!numericFileId.isEmpty()) {
         oldUrl = account->deprecatedPrivateLinkUrl(numericFileId).toString(QUrl::FullyEncoded);
+    }
 
     // Retrieve the new link by PROPFIND
     auto *job = new PropfindJob(account, remotePath, target);
@@ -1508,7 +1452,7 @@ bool SimpleApiJob::finished()
 {
     const auto httpStatusCode = reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     qCWarning(lcSimpleApiJob) << "result: " << path() << errorString() << httpStatusCode;
-    emit resultReceived(httpStatusCode);
+    Q_EMIT resultReceived(httpStatusCode);
     return true;
 }
 

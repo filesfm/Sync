@@ -58,7 +58,7 @@ class TestPushNotifications : public QObject
 {
     Q_OBJECT
 
-private slots:
+private Q_SLOTS:
     void initTestCase()
     {
         OCC::Logger::instance()->setLogFlush(true);
@@ -104,6 +104,24 @@ private slots:
                 QVERIFY(verifyCalledOnceWithAccount(*notificationsChangedSpy, account));
                 QVERIFY(verifyCalledOnceWithAccount(*activitiesChangedSpy, account));
             }));
+    }
+
+    void testSetup_httpsAccountWithPlaintextWebSocket_doesNotSendCredentials()
+    {
+        FakeWebSocketServer fakeServer;
+        const auto account = FakeWebSocketServer::createAccount(
+            QStringLiteral("user"),
+            QStringLiteral("app-password"),
+            QUrl(QStringLiteral("https://cloud.example.test")),
+            QUrl(QStringLiteral("ws://localhost:12345")));
+
+        QVERIFY(!account->pushNotifications());
+        QCOMPARE(fakeServer.textMessagesCount(), 0);
+
+        account->trySetupPushNotifications();
+
+        QVERIFY(!account->pushNotifications());
+        QCOMPARE(fakeServer.textMessagesCount(), 0);
     }
 
     void testOnWebSocketTextMessageReceived_notifyFileMessage_emitFilesChanged()
@@ -236,7 +254,7 @@ private slots:
         // The websocket that is retrieved through the server is not connected to the ssl error signal.
         auto pushNotificationsWebSocketChildren = account->pushNotifications()->findChildren<QWebSocket *>();
         QVERIFY(pushNotificationsWebSocketChildren.size() == 1);
-        emit pushNotificationsWebSocketChildren[0]->sslErrors(QList<QSslError>());
+        Q_EMIT pushNotificationsWebSocketChildren[0]->sslErrors(QList<QSslError>());
 
         // Account handled connectionLost signal and the authenticationFailed Signal should be emitted
         QCOMPARE(pushNotificationsDisabledSpy.count(), 1);

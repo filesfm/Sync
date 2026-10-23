@@ -105,6 +105,11 @@ FolderMan *FolderMan::instance()
     return _instance;
 }
 
+void FolderMan::resetInstance()
+{
+    _instance = nullptr;
+}
+
 FolderMan::~FolderMan()
 {
     qDeleteAll(_folderMap);

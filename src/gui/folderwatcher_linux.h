@@ -41,6 +41,12 @@ public:
 
     [[nodiscard]] int testWatchCount() const { return _pathToWatch.size(); }
 
+    /**
+     * @brief Check whether a given inotify watch descriptor is currently tracked.
+     * @param watchDescriptor The inotify watch descriptor to check.
+     */
+    [[nodiscard]] bool testWatchContains(int watchDescriptor) const { return _watchToPath.contains(watchDescriptor); }
+
     /// On linux the watcher is ready when the ctor finished.
     bool _ready = true;
 

@@ -19,6 +19,7 @@ if (WIN32)
         cldapi
     )
 
+
     set_target_properties(nextcloudsync_vfs_cfapi
       PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY

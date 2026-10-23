@@ -113,7 +113,8 @@ public:
 
     virtual void fetchPredefinedStatuses() = 0;
 
-    virtual void setUserStatus(const UserStatus &userStatus) = 0;
+    // Returns false if the request was not accepted, for example while another set request is still running.
+    [[nodiscard]] virtual bool setUserStatus(const UserStatus &userStatus) = 0;
 
     virtual void clearMessage() = 0;
 
@@ -121,7 +122,7 @@ public:
 
     [[nodiscard]] virtual bool supportsBusyStatus() const = 0;
 
-signals:
+Q_SIGNALS:
     void userStatusFetched(const OCC::UserStatus &userStatus);
     void predefinedStatusesFetched(const QVector<OCC::UserStatus> &statuses);
     void userStatusSet();

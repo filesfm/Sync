@@ -14,6 +14,7 @@ if (LINUX)
 
     target_link_libraries(nextcloudsync_vfs_xattr PRIVATE Nextcloud::sync)
 
+
     set_target_properties(nextcloudsync_vfs_xattr
       PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY

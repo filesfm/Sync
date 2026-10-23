@@ -72,6 +72,11 @@ public:
      */
     void setAppName(const QString &AppName);
 
+    /**
+     * Set whether missing keychain entries should be logged as warnings.
+     */
+    void setEntryNotFoundExpected(bool expected);
+
 #ifdef Q_OS_WIN
     /**
      * On Windows the credential keys aren't namespaced properly
@@ -92,6 +97,7 @@ protected:
     bool _insecureFallback = false;
     bool _autoDelete = true;
     bool _keychainMigration = false;
+    bool _entryNotFoundExpected = false;
 
     QKeychain::Error _error = QKeychain::NoError;
     QString _errorString;
@@ -126,10 +132,10 @@ public:
     */
     bool exec();
 
-signals:
+Q_SIGNALS:
     void finished(OCC::KeychainChunk::WriteJob *incomingJob);
 
-private slots:
+private Q_SLOTS:
     void slotWriteJobDone(QKeychain::Job *incomingJob);
 }; // class WriteJob
 
@@ -159,10 +165,10 @@ public:
     */
     bool exec();
 
-signals:
+Q_SIGNALS:
     void finished(OCC::KeychainChunk::ReadJob *incomingJob);
 
-private slots:
+private Q_SLOTS:
     void slotReadJobDone(QKeychain::Job *incomingJob);
 
 #if defined(Q_OS_UNIX) && !defined(Q_OS_MACOS)
@@ -197,10 +203,10 @@ public:
     */
     bool exec();
 
-signals:
+Q_SIGNALS:
     void finished(OCC::KeychainChunk::DeleteJob *incomingJob);
 
-private slots:
+private Q_SLOTS:
     void slotDeleteJobDone(QKeychain::Job *incomingJob);
 }; // class DeleteJob
 

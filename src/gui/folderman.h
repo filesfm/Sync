@@ -88,6 +88,7 @@ public:
 
     ~FolderMan() override;
     static FolderMan *instance();
+    static void resetInstance();
 
     int setupFolders();
     int setupFoldersMigration();

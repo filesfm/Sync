@@ -37,13 +37,16 @@ public:
 
     void clearTextMessages();
 
-    static OCC::AccountPtr createAccount(const QString &username = "user", const QString &password = "password");
+    static OCC::AccountPtr createAccount(const QString &username = "user",
+        const QString &password = "password",
+        const QUrl &accountUrl = QUrl(QStringLiteral("http://localhost")),
+        const QUrl &webSocketUrl = QUrl(QStringLiteral("ws://localhost:12345")));
 
-signals:
+Q_SIGNALS:
     void closed();
     void processTextMessage(QWebSocket *sender, const QString &message);
 
-private slots:
+private Q_SLOTS:
     void processTextMessageInternal(const QString &message);
     void onNewConnection();
     void socketDisconnected();

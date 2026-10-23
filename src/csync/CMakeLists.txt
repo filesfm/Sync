@@ -62,6 +62,8 @@ configure_file(csync_version.h.in ${CMAKE_CURRENT_BINARY_DIR}/csync_version.h)
 add_library(files_fm_sync_csync SHARED ${common_SOURCES} ${csync_SRCS})
 add_library(Nextcloud::csync ALIAS files_fm_sync_csync)
 
+target_compile_definitions(files_fm_sync_csync PRIVATE QT_NO_KEYWORDS)
+
 target_include_directories(
   files_fm_sync_csync
   PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/std

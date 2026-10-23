@@ -42,6 +42,8 @@ public:
     static QString excludeFileFromSystem(); // doesn't access config dir
 
     void cleanUpdaterConfiguration();
+    /** Path of the log msiexec writes while installing an update (Windows). */
+    [[nodiscard]] QString msiLogFilePath() const;
     void cleanupGlobalNetworkConfiguration();
 
     /**
@@ -239,6 +241,8 @@ public:
     [[nodiscard]] QString desktopEnterpriseChannel() const;
     void setDesktopEnterpriseChannel(const QString &channel);
 
+    [[nodiscard]] bool hasDesktopEnterpriseChannel() const;
+
     /// Enforce a specific language used for the UI
     [[nodiscard]] QString language() const;
     void setLanguage(const QString &language);
@@ -268,6 +272,13 @@ public:
     /// File Provider app sandbox migration flag
     [[nodiscard]] bool fileProviderDomainsAppSandboxMigrationCompleted() const;
     void setFileProviderDomainsAppSandboxMigrationCompleted(bool completed);
+
+    /// App-level macOS File Provider mode: when enabled, every account gets a file
+    /// provider domain and classic sync folders are unavailable (the File Provider
+    /// extension and the FinderSync extension cannot run at the same time).
+    [[nodiscard]] bool macFileProviderModeEnabled() const;
+    [[nodiscard]] bool macFileProviderModeEnabledIsSet() const;
+    void setMacFileProviderModeEnabled(bool enabled);
 
     /// Helper function for migration/upgrade proccess
     enum MigrationPhase {

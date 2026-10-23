@@ -45,7 +45,6 @@
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
-#include <openssl/engine.h>
 #include <openssl/rand.h>
 #include <openssl/cms.h>
 
@@ -387,9 +386,6 @@ QByteArray encryptPrivateKey(
 }
 
 QByteArray decryptPrivateKey(const QByteArray& key, const QByteArray& data) {
-    qCInfo(lcCse()) << "decryptStringSymmetric key: " << key;
-    qCInfo(lcCse()) << "decryptStringSymmetric data: " << data;
-
     const auto parts = splitCipherParts(data);
     if (parts.size() < 2) {
         qCInfo(lcCse()) << "Not enough parts found";
@@ -398,9 +394,6 @@ QByteArray decryptPrivateKey(const QByteArray& key, const QByteArray& data) {
 
     QByteArray cipherTXT64 = parts.at(0);
     QByteArray ivB64 = parts.at(1);
-
-    qCInfo(lcCse()) << "decryptStringSymmetric cipherTXT: " << cipherTXT64;
-    qCInfo(lcCse()) << "decryptStringSymmetric IV: " << ivB64;
 
     QByteArray cipherTXT = QByteArray::fromBase64(cipherTXT64);
     QByteArray iv = QByteArray::fromBase64(ivB64);
@@ -477,9 +470,6 @@ QByteArray extractPrivateKeySalt(const QByteArray &data)
 }
 
 QByteArray decryptStringSymmetric(const QByteArray& key, const QByteArray& data) {
-    qCInfo(lcCse()) << "decryptStringSymmetric key: " << key;
-    qCInfo(lcCse()) << "decryptStringSymmetric data: " << data;
-
     const auto parts = splitCipherParts(data);
     if (parts.size() < 2) {
         qCInfo(lcCse()) << "Not enough parts found";
@@ -488,9 +478,6 @@ QByteArray decryptStringSymmetric(const QByteArray& key, const QByteArray& data)
 
     QByteArray cipherTXT64 = parts.at(0);
     QByteArray ivB64 = parts.at(1);
-
-    qCInfo(lcCse()) << "decryptStringSymmetric cipherTXT: " << cipherTXT64;
-    qCInfo(lcCse()) << "decryptStringSymmetric IV: " << ivB64;
 
     QByteArray cipherTXT = QByteArray::fromBase64(cipherTXT64);
     QByteArray iv = QByteArray::fromBase64(ivB64);
@@ -756,15 +743,14 @@ QByteArray encryptStringSymmetric(const QByteArray& key, const QByteArray& data)
 
 namespace internals {
 
-OCC::Result<QByteArray, OCC::ClientSideEncryption::EncryptionErrorType> decryptStringAsymmetric(ClientSideEncryption &encryptionEngine,
+OCC::Result<QByteArray, OCC::ClientSideEncryption::EncryptionErrorType> decryptStringAsymmetric(ClientSideEncryption &,
                                                                                                 EVP_PKEY *privateKey,
                                                                                                 int pad_mode,
                                                                                                 const QByteArray& binaryData)
 {
-    const auto sslEngine = encryptionEngine.sslEngine();
     int err = -1;
 
-    auto ctx = PKeyCtx::forKey(privateKey, sslEngine);
+    auto ctx = PKeyCtx::forKey(privateKey);
     if (!ctx) {
         qCInfo(lcCseDecryption()) << "Could not create the PKEY context." << handleErrors();
         return {OCC::ClientSideEncryption::EncryptionErrorType::FatalError};
@@ -818,10 +804,9 @@ OCC::Result<QByteArray, ClientSideEncryption::EncryptionErrorType> encryptString
                                                                                            EVP_PKEY *publicKey,
                                                                                            int pad_mode,
                                                                                            const QByteArray& binaryData) {
-    const auto sslEngine = encryptionEngine.sslEngine();
-    auto ctx = PKeyCtx::forKey(publicKey, sslEngine);
+    auto ctx = PKeyCtx::forKey(publicKey);
     if (!ctx) {
-        qCInfo(lcCseEncryption()) << "Could not initialize the pkey context." << publicKey << sslEngine;
+        qCInfo(lcCseEncryption()) << "Could not initialize the pkey context." << publicKey;
         return {OCC::ClientSideEncryption::EncryptionErrorType::FatalError};
     }
 
@@ -890,10 +875,7 @@ void debugOpenssl()
 
 }
 
-
-ClientSideEncryption::ClientSideEncryption()
-{
-}
+ClientSideEncryption::ClientSideEncryption() = default;
 
 bool ClientSideEncryption::isInitialized() const
 {
@@ -994,11 +976,6 @@ const QSslCertificate& ClientSideEncryption::getCertificate() const
     return _encryptionCertificate.getCertificate();
 }
 
-ENGINE* ClientSideEncryption::sslEngine() const
-{
-    return ENGINE_get_default_RSA();
-}
-
 ClientSideEncryptionTokenSelector *ClientSideEncryption::usbTokenInformation()
 {
     return &_usbTokenInformation;
@@ -1050,7 +1027,7 @@ void ClientSideEncryption::initialize(QWidget *settingsDialog)
     qCInfo(lcCse()) << "Initializing";
     if (!_account->capabilities().clientSideEncryptionAvailable()) {
         qCInfo(lcCse()) << "No Client side encryption available on server.";
-        emit initializationFinished();
+        Q_EMIT initializationFinished();
         return;
     }
 
@@ -1070,7 +1047,7 @@ void ClientSideEncryption::initialize(QWidget *settingsDialog)
                 Q_EMIT finishedDiscoveryEncryptionUsbToken();
             });
         } else {
-            emit initializationFinished();
+            Q_EMIT initializationFinished();
         }
     } else {
         fetchCertificateFromKeyChain();
@@ -1575,10 +1552,10 @@ void ClientSideEncryption::publicKeyFetchedForUserId(QKeychain::Job *incoming)
     Q_ASSERT(readJob);
 
     if (readJob->error() != NoError || readJob->binaryData().isEmpty()) {
-        emit certificateFetchedFromKeychain(QSslCertificate{});
+        Q_EMIT certificateFetchedFromKeychain(QSslCertificate{});
         return;
     }
-    emit certificateFetchedFromKeychain(QSslCertificate(readJob->binaryData(), QSsl::Pem));
+    Q_EMIT certificateFetchedFromKeychain(QSslCertificate(readJob->binaryData(), QSsl::Pem));
 }
 
 void ClientSideEncryption::privateKeyFetched(Job *incoming)
@@ -1686,7 +1663,7 @@ void ClientSideEncryption::writeCertificate(const QString &userId, const QSslCer
     connect(job, &WritePasswordJob::finished, job, [this, certificate](Job *incoming) {
         Q_UNUSED(incoming);
         qCInfo(lcCse()) << "Certificate stored in keychain";
-        emit certificateWriteComplete(certificate);
+        Q_EMIT certificateWriteComplete(certificate);
     });
     job->start();
 }
@@ -1696,7 +1673,7 @@ void ClientSideEncryption::completeHardwareTokenInitialization(QWidget *settings
     if (_usbTokenInformation.isSetup()) {
         initializeHardwareTokenEncryption(settingsDialog);
     } else {
-        emit initializationFinished();
+        Q_EMIT initializationFinished();
     }
 }
 
@@ -1817,13 +1794,13 @@ void ClientSideEncryption::getUsersPublicKeyFromServer(const QStringList &userId
                     results.insert(userId, QSslCertificate(publicKeys.value(userId).toString().toLocal8Bit(), QSsl::Pem));
                 }
             }
-            emit certificatesFetchedFromServer(results);
+            Q_EMIT certificatesFetchedFromServer(results);
         } else if (retCode == 404) {
             qCInfo(lcCse()) << "No public key on the server";
-            emit certificatesFetchedFromServer({});
+            Q_EMIT certificatesFetchedFromServer({});
         } else {
             qCInfo(lcCse()) << "Error while requesting public keys for users: " << retCode;
-            emit certificatesFetchedFromServer({});
+            Q_EMIT certificatesFetchedFromServer({});
         }
     });
     QUrlQuery urlQuery;
@@ -2119,7 +2096,7 @@ void ClientSideEncryption::sendPublicKey()
         case 200:
         case 409:
             saveCertificateIdentification();
-            emit initializationFinished();
+            Q_EMIT initializationFinished();
 
             break;
         default:
@@ -2263,7 +2240,7 @@ void ClientSideEncryption::encryptPrivateKey()
             writePrivateKey();
             writeCertificate();
             writeMnemonic([this] () {
-                emit initializationFinished(true);
+                Q_EMIT initializationFinished(true);
             });
             break;
         default:
@@ -2281,6 +2258,7 @@ void ClientSideEncryption::decryptPrivateKey(const QByteArray &key) {
         return;
     }
 
+    //: %2 is the account username. %3 is the account display name.
     QString msg = tr("Please enter your end-to-end encryption passphrase:<br>"
                      "<br>"
                      "Username: %2<br>"
@@ -2338,7 +2316,7 @@ void ClientSideEncryption::decryptPrivateKey(const QByteArray &key) {
         }
     }
 
-    emit initializationFinished();
+    Q_EMIT initializationFinished();
 }
 
 void ClientSideEncryption::getPrivateKeyFromServer()
@@ -2350,11 +2328,11 @@ void ClientSideEncryption::getPrivateKeyFromServer()
             decryptPrivateKey(key.toLocal8Bit());
         } else if (retCode == 404) {
             qCWarning(lcCse) << "No private key on the server: setup is incomplete.";
-            emit initializationFinished();
+            Q_EMIT initializationFinished();
             return;
         } else {
             qCWarning(lcCse) << "Error while requesting public key: " << retCode;
-            emit initializationFinished();
+            Q_EMIT initializationFinished();
             return;
         }
     });

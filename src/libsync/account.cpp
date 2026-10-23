@@ -20,7 +20,6 @@
 #include "updatechannel.h"
 #include "version.h"
 
-#include "deletejob.h"
 #include "lockfilejobs.h"
 
 #include "common/syncjournaldb.h"
@@ -64,6 +63,17 @@ constexpr int pushNotificationsReconnectInterval = 1000 * 60 * 2;
 constexpr int usernamePrefillServerVersionMinSupportedMajor = 24;
 constexpr int checksumRecalculateRequestServerVersionMinSupportedMajor = 24;
 constexpr auto isSkipE2eeMetadataChecksumValidationAllowedInClientVersion = MIRALL_VERSION_MAJOR == 3 && MIRALL_VERSION_MINOR == 8;
+
+bool isPushNotificationsWebSocketUrlAllowed(const QUrl &accountUrl, const QUrl &webSocketUrl)
+{
+    const auto webSocketScheme = webSocketUrl.scheme();
+    if (webSocketScheme.compare(QLatin1String("wss"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+
+    return webSocketScheme.compare(QLatin1String("ws"), Qt::CaseInsensitive) == 0
+        && accountUrl.scheme().compare(QLatin1String("http"), Qt::CaseInsensitive) == 0;
+}
 }
 
 namespace OCC {
@@ -153,8 +163,8 @@ void Account::setDavUser(const QString &newDavUser)
 
     _davUser = newDavUser;
 
-    emit wantsAccountSaved(sharedFromThis());
-    emit prettyNameChanged();
+    Q_EMIT wantsAccountSaved(sharedFromThis());
+    Q_EMIT prettyNameChanged();
 }
 
 QString Account::userFromCredentials() const
@@ -170,7 +180,7 @@ QImage Account::avatar() const
 void Account::setAvatar(const QImage &img)
 {
     _avatarImg = img;
-    emit accountChangedAvatar();
+    Q_EMIT accountChangedAvatar();
 }
 #endif
 
@@ -224,8 +234,8 @@ QString Account::davDisplayName() const
 void Account::setDavDisplayName(const QString &newDisplayName)
 {
     _davDisplayName = newDisplayName;
-    emit accountChangedDisplayName();
-    emit prettyNameChanged();
+    Q_EMIT accountChangedDisplayName();
+    Q_EMIT prettyNameChanged();
 }
 
 QString Account::prettyName() const
@@ -351,6 +361,17 @@ void Account::trySetupPushNotifications()
     _pushNotificationsReconnectTimer.stop();
 
     if (_capabilities.availablePushNotifications() != PushNotificationType::None) {
+        const auto webSocketUrl = _capabilities.pushNotificationsWebSocketUrl();
+        if (!isPushNotificationsWebSocketUrlAllowed(url(), webSocketUrl)) {
+            qCWarning(lcAccount) << "Reject insecure push notifications websocket endpoint" << webSocketUrl << "for account" << url();
+            if (_pushNotifications) {
+                delete _pushNotifications;
+                _pushNotifications = nullptr;
+            }
+            Q_EMIT pushNotificationsDisabled(sharedFromThis());
+            return;
+        }
+
         qCInfo(lcAccount) << "Try to setup push notifications";
 
         if (!_pushNotifications) {
@@ -358,7 +379,7 @@ void Account::trySetupPushNotifications()
 
             connect(_pushNotifications, &PushNotifications::ready, this, [this]() {
                 _pushNotificationsReconnectTimer.stop();
-                emit pushNotificationsReady(sharedFromThis());
+                Q_EMIT pushNotificationsReady(sharedFromThis());
             });
 
             const auto disablePushNotifications = [this]() {
@@ -367,7 +388,7 @@ void Account::trySetupPushNotifications()
                     return;
                 }
                 if (!_pushNotifications->isReady()) {
-                    emit pushNotificationsDisabled(sharedFromThis());
+                    Q_EMIT pushNotificationsDisabled(sharedFromThis());
                 }
                 if (!_pushNotificationsReconnectTimer.isActive()) {
                     _pushNotificationsReconnectTimer.start();
@@ -661,7 +682,7 @@ void Account::slotHandleSslErrors(QNetworkReply *reply, QList<QSslError> errors)
         if (!approvedCerts.isEmpty()) {
             QSslConfiguration::defaultConfiguration().addCaCertificates(approvedCerts);
             addApprovedCerts(approvedCerts);
-            emit wantsAccountSaved(sharedFromThis());
+            Q_EMIT wantsAccountSaved(sharedFromThis());
 
             // all ssl certs are known and accepted. We can ignore the problems right away.
             qCInfo(lcAccount) << out << "Certs are known and trusted! This is not an actual error.";
@@ -697,26 +718,26 @@ void Account::slotCredentialsFetched()
             fetchUserNameJob->deleteLater();
             if (statusCode != 100) {
                 qCWarning(lcAccount) << "Could not fetch user id. Login will probably not work.";
-                emit credentialsFetched(_credentials.data());
+                Q_EMIT credentialsFetched(_credentials.data());
                 return;
             }
 
             const auto objData = json.object().value("ocs").toObject().value("data").toObject();
             const auto userId = objData.value("id").toString("");
             setDavUser(userId);
-            emit credentialsFetched(_credentials.data());
+            Q_EMIT credentialsFetched(_credentials.data());
         });
         fetchUserNameJob->start();
         return;
     }
 
     qCDebug(lcAccount) << "User id already fetched.";
-    emit credentialsFetched(_credentials.data());
+    Q_EMIT credentialsFetched(_credentials.data());
 }
 
 void Account::slotCredentialsAsked()
 {
-    emit credentialsAsked(_credentials.data());
+    Q_EMIT credentialsAsked(_credentials.data());
 }
 
 void Account::handleInvalidCredentials()
@@ -724,7 +745,7 @@ void Account::handleInvalidCredentials()
     // Retrieving password will trigger remote wipe check job
     retrieveAppPassword();
 
-    emit invalidCredentials();
+    Q_EMIT invalidCredentials();
 }
 
 void Account::clearQNAMCache()
@@ -757,7 +778,7 @@ void Account::setCapabilities(const QVariantMap &caps)
     updateDesktopEnterpriseChannel();
     updateServerHasIntegration();
 
-    emit capabilitiesChanged();
+    Q_EMIT capabilitiesChanged();
 
     setupUserStatusConnector();
     trySetupPushNotifications();
@@ -769,11 +790,11 @@ void Account::setupUserStatusConnector()
 {
     _userStatusConnector = std::make_shared<OcsUserStatusConnector>(sharedFromThis());
     connect(_userStatusConnector.get(), &UserStatusConnector::userStatusFetched, this, [this](const UserStatus &) {
-        emit userStatusChanged();
+        Q_EMIT userStatusChanged();
     });
     connect(_userStatusConnector.get(), &UserStatusConnector::serverUserStatusChanged, this, &Account::serverUserStatusChanged);
     connect(_userStatusConnector.get(), &UserStatusConnector::messageCleared, this, [this] {
-        emit userStatusChanged();
+        Q_EMIT userStatusChanged();
     });
 
     _userStatusConnector->fetchUserStatus();
@@ -792,7 +813,7 @@ bool Account::shouldSkipE2eeMetadataChecksumValidation() const
 void Account::resetShouldSkipE2eeMetadataChecksumValidation()
 {
     _skipE2eeMetadataChecksumValidation = false;
-    emit wantsAccountSaved(sharedFromThis());
+    Q_EMIT wantsAccountSaved(sharedFromThis());
 }
 
 int Account::serverVersionInt() const
@@ -864,7 +885,7 @@ void Account::setServerVersion(const QString &version)
 
     const auto oldServerVersion = _serverVersion;
     _serverVersion = version;
-    emit serverVersionChanged(sharedFromThis(), oldServerVersion, version);
+    Q_EMIT serverVersionChanged(sharedFromThis(), oldServerVersion, version);
 }
 
 void Account::writeAppPasswordOnce(const QString &appPassword)
@@ -926,7 +947,7 @@ void Account::retrieveAppPassword()
             qCDebug(lcAccount) << "Found appPassword";
         }
 
-        emit appPasswordRetrieved(password);
+        Q_EMIT appPasswordRetrieved(password);
     });
     job->start();
 }
@@ -966,18 +987,13 @@ void Account::deleteAppPassword()
 
 void Account::deleteAppToken()
 {
-    const auto deleteAppTokenJob = new DeleteJob(sharedFromThis(), QStringLiteral("/ocs/v2.php/core/apppassword"));
-    connect(deleteAppTokenJob, &DeleteJob::finishedSignal, this, [this]() {
-        if (const auto deleteJob = qobject_cast<DeleteJob *>(QObject::sender())) {
-            const auto httpCode = deleteJob->reply()->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if (httpCode != 200) {
-                qCWarning(lcAccount) << "AppToken remove failed for user: " << displayName() << " with code: " << httpCode;
-            } else {
-                qCInfo(lcAccount) << "AppToken for user: " << displayName() << " has been removed.";
-            }
+    const auto deleteAppTokenJob = new SimpleApiJob(sharedFromThis(), QStringLiteral("/ocs/v2.php/core/apppassword"));
+    deleteAppTokenJob->setVerb(SimpleApiJob::Verb::Delete);
+    connect(deleteAppTokenJob, &SimpleApiJob::resultReceived, this, [this](const int httpCode) {
+        if (httpCode != 200) {
+            qCWarning(lcAccount) << "AppToken remove failed for user: " << displayName() << " with code: " << httpCode;
         } else {
-            Q_ASSERT(false);
-            qCWarning(lcAccount) << "The sender is not a DeleteJob instance.";
+            qCInfo(lcAccount) << "AppToken for user: " << displayName() << " has been removed.";
         }
     });
     deleteAppTokenJob->start();
@@ -1238,7 +1254,7 @@ void Account::setLastRootETag(const QByteArray &etag)
 void Account::setAskUserForMnemonic(const bool ask)
 {
     _e2eAskUserForMnemonic = ask;
-    emit askUserForMnemonicChanged();
+    Q_EMIT askUserForMnemonicChanged();
 }
 
 void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, const QString &remoteSyncRootPath, const QString &subPath, SyncJournalDb *journalForFolder)
@@ -1425,7 +1441,7 @@ void Account::setProxyType(QNetworkProxy::ProxyType proxyType)
         _networkAccessManager->setProxy(proxy);
     }
 
-    emit proxyTypeChanged();
+    Q_EMIT proxyTypeChanged();
 }
 
 QString Account::proxyHostName() const
@@ -1447,7 +1463,7 @@ void Account::setProxyHostName(const QString &hostName)
         _networkAccessManager->setProxy(proxy);
     }
 
-    emit proxyHostNameChanged();
+    Q_EMIT proxyHostNameChanged();
 }
 
 int Account::proxyPort() const
@@ -1469,7 +1485,7 @@ void Account::setProxyPort(const int port)
         _networkAccessManager->setProxy(proxy);
     }
 
-    emit proxyPortChanged();
+    Q_EMIT proxyPortChanged();
 }
 
 bool Account::proxyNeedsAuth() const
@@ -1484,7 +1500,7 @@ void Account::setProxyNeedsAuth(const bool needsAuth)
     }
 
     _proxyNeedsAuth = needsAuth;
-    emit proxyNeedsAuthChanged();
+    Q_EMIT proxyNeedsAuthChanged();
 }
 
 QString Account::proxyUser() const
@@ -1506,7 +1522,7 @@ void Account::setProxyUser(const QString &user)
         _networkAccessManager->setProxy(proxy);
     }
 
-    emit proxyUserChanged();
+    Q_EMIT proxyUserChanged();
 }
 
 QString Account::proxyPassword() const
@@ -1528,7 +1544,7 @@ void Account::setProxyPassword(const QString &password)
         _networkAccessManager->setProxy(proxy);
     }
 
-    emit proxyPasswordChanged();
+    Q_EMIT proxyPasswordChanged();
 }
 
 void Account::setProxySettings(const AccountNetworkProxySetting networkProxySetting,
@@ -1576,7 +1592,7 @@ void Account::setUploadLimitSetting(const AccountNetworkTransferLimitSetting set
     }
 
     _uploadLimitSetting = targetSetting;
-    emit uploadLimitSettingChanged();
+    Q_EMIT uploadLimitSettingChanged();
 }
 
 Account::AccountNetworkTransferLimitSetting Account::downloadLimitSetting() const
@@ -1602,7 +1618,7 @@ void Account::setDownloadLimitSetting(const AccountNetworkTransferLimitSetting s
     }
 
     _downloadLimitSetting = targetSetting;
-    emit downloadLimitSettingChanged();
+    Q_EMIT downloadLimitSettingChanged();
 }
 
 unsigned int Account::uploadLimit() const
@@ -1617,7 +1633,7 @@ void Account::setUploadLimit(const unsigned int limit)
     }
 
     _uploadLimit = limit;
-    emit uploadLimitChanged();
+    Q_EMIT uploadLimitChanged();
 }
 
 unsigned int Account::downloadLimit() const
@@ -1632,7 +1648,7 @@ void Account::setDownloadLimit(const unsigned int limit)
     }
 
     _downloadLimit = limit;
-    emit downloadLimitChanged();
+    Q_EMIT downloadLimitChanged();
 }
 
 bool Account::serverHasIntegration() const

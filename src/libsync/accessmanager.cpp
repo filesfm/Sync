@@ -20,6 +20,8 @@
 #include "common/utility.h"
 #include "httplogger.h"
 
+using namespace Qt::StringLiterals;
+
 namespace OCC {
 
 Q_LOGGING_CATEGORY(lcAccessManager, "nextcloud.sync.accessmanager", QtInfoMsg)
@@ -50,6 +52,35 @@ QByteArray AccessManager::generateRequestId()
 
 QNetworkReply *AccessManager::createRequest(QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *outgoingData)
 {
+    const auto opToText = [] (QNetworkAccessManager::Operation op) -> QByteArray {
+        auto result = QByteArray{};
+        switch (op) {
+        case QNetworkAccessManager::HeadOperation:
+            result = "HEAD";
+            break;
+        case QNetworkAccessManager::GetOperation:
+            result = "GET";
+            break;
+        case QNetworkAccessManager::PutOperation:
+            result = "PUT";
+            break;
+        case QNetworkAccessManager::PostOperation:
+            result = "POST";
+            break;
+        case QNetworkAccessManager::DeleteOperation:
+            result = "DELETE";
+            break;
+        case QNetworkAccessManager::CustomOperation:
+            result = "CUSTOM";
+            break;
+        case QNetworkAccessManager::UnknownOperation:
+            result = "UNKNOWN";
+            break;
+        };
+
+        return result;
+    };
+
     QNetworkRequest newRequest(request);
 
     // Respect request specific user agent if any
@@ -69,18 +100,15 @@ QNetworkReply *AccessManager::createRequest(QNetworkAccessManager::Operation op,
 
     // Generate a new request id
     QByteArray requestId = generateRequestId();
-    qInfo(lcAccessManager) << op << verb << newRequest.url().toString() << "has X-Request-ID" << requestId;
+    qInfo(lcAccessManager) << opToText(op) << verb << newRequest.url().toString() << "has X-Request-ID" << requestId;
     newRequest.setRawHeader("X-Request-ID", requestId);
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 9, 4)
-    // only enable HTTP2 with Qt 5.9.4 because old Qt have too many bugs (e.g. QTBUG-64359 is fixed in >= Qt 5.9.4)
     if (newRequest.url().scheme() == "https") { // Not for "http": QTBUG-61397
         // http2 seems to cause issues, as with our recommended server setup we don't support http2, disable it by default for now
         static const bool http2EnabledEnv = qEnvironmentVariableIntValue("OWNCLOUD_HTTP2_ENABLED") == 1;
 
         newRequest.setAttribute(QNetworkRequest::Http2AllowedAttribute, http2EnabledEnv);
     }
-#endif
 
     if (!newRequest.attribute(QNetworkRequest::RedirectPolicyAttribute).isValid()) {
         // We handle redirects ourselves in AbstractNetworkJob::slotFinished
@@ -91,6 +119,14 @@ QNetworkReply *AccessManager::createRequest(QNetworkAccessManager::Operation op,
 
     const auto reply = QNetworkAccessManager::createRequest(op, newRequest, outgoingData);
     HttpLogger::logRequest(reply, op, outgoingData);
+    QObject::connect(reply, &QNetworkReply::requestSent, reply, [reply] {
+        qCInfo(lcAccessManager()) << "Request has been sent"
+                                  << reply->url().toString()
+                                  << reply->request().rawHeader("X-Request-ID"_ba)
+                                  << reply->header(QNetworkRequest::ContentTypeHeader).toString()
+                                  << reply->rawHeaderPairs()
+                                  << reply;
+    });
     return reply;
 }
 

@@ -13,6 +13,8 @@
 #include <QVersionNumber>
 #include <QDebug>
 
+using namespace Qt::StringLiterals;
+
 namespace OCC {
 
 Q_LOGGING_CATEGORY(lcServerCapabilities, "nextcloud.sync.server.capabilities", QtInfoMsg)
@@ -33,11 +35,6 @@ bool Capabilities::shareAPI() const
     }
 }
 
-bool Capabilities::shareEmailPasswordEnabled() const
-{
-    return _capabilities["files_sharing"].toMap()["sharebymail"].toMap()["password"].toMap()["enabled"].toBool();
-}
-
 bool Capabilities::shareEmailPasswordEnforced() const
 {
     return _capabilities["files_sharing"].toMap()["sharebymail"].toMap()["password"].toMap()["enforced"].toBool();
@@ -51,16 +48,6 @@ bool Capabilities::sharePublicLink() const
         // This was later added so if it is not present just assume that link sharing is enabled.
         return true;
     }
-}
-
-bool Capabilities::sharePublicLinkAllowUpload() const
-{
-    return _capabilities["files_sharing"].toMap()["public"].toMap()["upload"].toBool();
-}
-
-bool Capabilities::sharePublicLinkSupportsUploadOnly() const
-{
-    return _capabilities["files_sharing"].toMap()["public"].toMap()["supports_upload_only"].toBool();
 }
 
 bool Capabilities::sharePublicLinkAskOptionalPassword() const
@@ -101,11 +88,6 @@ bool Capabilities::shareRemoteEnforceExpireDate() const
 int Capabilities::shareRemoteExpireDateDays() const
 {
     return _capabilities["files_sharing"].toMap()["public"].toMap()["expire_date_remote"].toMap()["days"].toInt();
-}
-
-bool Capabilities::sharePublicLinkMultiple() const
-{
-    return _capabilities["files_sharing"].toMap()["public"].toMap()["multiple"].toBool();
 }
 
 bool Capabilities::shareResharing() const
@@ -220,21 +202,25 @@ QByteArray Capabilities::preferredUploadChecksumType() const
 QByteArray Capabilities::uploadChecksumType() const
 {
     QByteArray preferred = preferredUploadChecksumType();
-    if (!preferred.isEmpty())
+    if (!preferred.isEmpty()) {
         return preferred;
+    }
     QList<QByteArray> supported = supportedChecksumTypes();
-    if (!supported.isEmpty())
+    if (!supported.isEmpty()) {
         return supported.first();
+    }
     return QByteArray();
 }
 
 bool Capabilities::chunkingNg() const
 {
     static const auto chunkng = qgetenv("OWNCLOUD_CHUNKING_NG");
-    if (chunkng == "0")
+    if (chunkng == "0") {
         return false;
-    if (chunkng == "1")
+    }
+    if (chunkng == "1") {
         return true;
+    }
     return _capabilities["dav"].toMap()["chunking"].toByteArray() >= "1.0";
 }
 
@@ -393,8 +379,9 @@ bool Capabilities::uploadConflictFiles() const
 {
     static auto envIsSet = !qEnvironmentVariableIsEmpty("OWNCLOUD_UPLOAD_CONFLICT_FILES");
     static int envValue = qEnvironmentVariableIntValue("OWNCLOUD_UPLOAD_CONFLICT_FILES");
-    if (envIsSet)
+    if (envIsSet) {
         return envValue != 0;
+    }
 
     return _capabilities[QStringLiteral("uploadConflictFiles")].toBool();
 }
@@ -512,15 +499,17 @@ QList<QVariantMap> Capabilities::fileActionsByMimeType(const QMimeType &fileMime
 // Direct Editing
 void Capabilities::addDirectEditor(DirectEditor* directEditor)
 {
-    if(directEditor)
+    if (directEditor) {
         _directEditors.append(directEditor);
+    }
 }
 
 DirectEditor* Capabilities::getDirectEditorForMimetype(const QMimeType &mimeType)
 {
     for (const auto editor : std::as_const(_directEditors)) {
-        if(editor->hasMimetype(mimeType))
+        if (editor->hasMimetype(mimeType)) {
             return editor;
+        }
     }
 
     return nullptr;
@@ -529,11 +518,17 @@ DirectEditor* Capabilities::getDirectEditorForMimetype(const QMimeType &mimeType
 DirectEditor* Capabilities::getDirectEditorForOptionalMimetype(const QMimeType &mimeType)
 {
     for (const auto editor : std::as_const(_directEditors)) {
-        if(editor->hasOptionalMimetype(mimeType))
+        if (editor->hasOptionalMimetype(mimeType)) {
             return editor;
+        }
     }
 
     return nullptr;
+}
+
+bool Capabilities::governanceAvailable() const
+{
+    return _capabilities.contains(u"governance"_s);
 }
 
 

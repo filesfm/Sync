@@ -64,6 +64,7 @@ struct LocalInfo
     bool isSymLink = false;
     bool isMetadataMissing = false;
     bool isPermissionsInvalid = false;
+    bool isLocked = false;
     [[nodiscard]] bool isValid() const { return !name.isNull(); }
 };
 
@@ -72,7 +73,7 @@ struct LocalInfo
  *
  * @ingroup libsync
  */
-class DiscoverySingleLocalDirectoryJob : public QObject, public QRunnable
+class OWNCLOUDSYNC_EXPORT DiscoverySingleLocalDirectoryJob : public QObject, public QRunnable
 {
     Q_OBJECT
 public:
@@ -83,14 +84,14 @@ public:
                                               QObject *parent = nullptr);
 
     void run() override;
-signals:
+Q_SIGNALS:
     void finished(QVector<OCC::LocalInfo> result);
     void finishedFatalError(QString errorString);
     void finishedNonFatalError(QString errorString);
 
     void itemDiscovered(OCC::SyncFileItemPtr item);
     void childIgnored(bool b);
-private slots:
+private Q_SLOTS:
 private:
     QString _localPath;
     AccountPtr _account;
@@ -129,14 +130,14 @@ public:
     [[nodiscard]] SyncFileItem::EncryptionStatus requiredEncryptionStatus() const;
 
     // This is not actually a network job, it is just a job
-signals:
+Q_SIGNALS:
     void firstDirectoryPermissions(OCC::RemotePermissions);
     void etag(const QByteArray &, const QDateTime &time);
     void finished(const OCC::HttpResult<QVector<OCC::RemoteInfo>> &result);
     void setfolderQuota(const OCC::FolderQuota &folderQuota);
     void firstDirectoryFileId(qint64 fileId);
 
-private slots:
+private Q_SLOTS:
     void directoryListingIteratedSlot(const QString &, const QMap<QString, QString> &);
     void lsJobFinishedWithoutErrorSlot();
     void lsJobFinishedWithErrorSlot(QNetworkReply *reply);
@@ -278,7 +279,7 @@ class DiscoveryPhase : public QObject
 
     void enqueueDirectoryToDelete(const QString &path, ProcessDirectoryJob* const directoryJob);
 
-    bool recursiveCheckForDeletedParents(const QString &itemPath) const;
+    [[nodiscard]] bool recursiveCheckForDeletedParents(const QString &itemPath) const;
 
     /// contains files/folder names that are requested to be deleted permanently
     QSet<QString> _permanentDeletionRequests;
@@ -327,7 +328,7 @@ public:
 
     QSet<QString> _topLevelE2eeFolderPaths;
 
-signals:
+Q_SIGNALS:
     void fatalError(const QString &errorString, const OCC::ErrorCategory errorCategory);
     void itemDiscovered(const OCC::SyncFileItemPtr &item);
     void finished();
@@ -345,7 +346,10 @@ signals:
     void addErrorToGui(const OCC::SyncFileItem::Status status, const QString &errorMessage, const QString &subject, const OCC::ErrorCategory category);
 
     void remnantReadOnlyFolderDiscovered(const OCC::SyncFileItemPtr &item);
-private slots:
+
+    /** Emitted when propagation would have problems with a locked file. */
+    void seenLockedFile(const QString &fileName);
+private Q_SLOTS:
     void slotItemDiscovered(const OCC::SyncFileItemPtr &item);
 };
 

@@ -26,7 +26,7 @@ class TestSecureFileDrop : public QObject
     QScopedPointer<FolderMetadata> _parsedMetadataWithFileDrop;
     QScopedPointer<FolderMetadata> _parsedMetadataAfterProcessingFileDrop;
 
-private slots:
+private Q_SLOTS:
     void initTestCase()
     {
         OCC::Logger::instance()->setLogFlush(true);
@@ -87,7 +87,7 @@ private slots:
             encryptedFile.originalFilename = fakeFileName;
             encryptedFile.mimetype = "application/octet-stream";
             encryptedFile.initializationVector = EncryptionHelper::generateRandom(16);
-            metadata->addEncryptedFile(encryptedFile);
+            QVERIFY(metadata->addEncryptedFile(encryptedFile));
         }
 
         QJsonObject fakeFileDropPart;

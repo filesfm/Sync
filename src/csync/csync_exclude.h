@@ -37,6 +37,7 @@ enum CSYNC_EXCLUDE_TYPE {
   CSYNC_FILE_EXCLUDE_SERVER_BLACKLISTED,
   CSYNC_FILE_EXCLUDE_LEADING_SPACE,
   CSYNC_FILE_EXCLUDE_LEADING_AND_TRAILING_SPACE,
+  CSYNC_FILE_LOCKED_SILENTLY_EXCLUDED,
 };
 
 class ExcludedFilesTest;
@@ -137,7 +138,7 @@ public:
      */
     [[nodiscard]] QStringList activeExcludePatterns() const;
 
-public slots:
+public Q_SLOTS:
     /**
      * Reloads the exclude patterns from the registered paths.
      */

@@ -454,7 +454,7 @@ public:
 
     [[nodiscard]] bool serverHasIntegration() const;
 
-public slots:
+public Q_SLOTS:
     /// Used when forgetting credentials
     void clearQNAMCache();
     void slotHandleSslErrors(QNetworkReply *, QList<QSslError>);
@@ -465,7 +465,7 @@ public slots:
                           const QString &subPath,
                           OCC::SyncJournalDb *journalForFolder);
 
-signals:
+Q_SIGNALS:
     /// Emitted whenever there's network activity
     void propagatorNetworkActivity();
 
@@ -530,7 +530,7 @@ protected Q_SLOTS:
     void slotCredentialsAsked();
     void slotDirectEditingRecieved(const QJsonDocument &json);
 
-private slots:
+private Q_SLOTS:
     void removeLockStatusChangeInprogress(const QString &serverRelativePath, const OCC::SyncFileItemEnums::LockStatus lockStatus);
 
 private:

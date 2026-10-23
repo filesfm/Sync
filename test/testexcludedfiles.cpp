@@ -67,7 +67,7 @@ static auto check_dir_traversal(const char *path)
 }
 
 
-private slots:
+private Q_SLOTS:
     void initTestCase()
     {
         OCC::Logger::instance()->setLogFlush(true);
@@ -181,6 +181,18 @@ private slots:
         /* pattern ]*.directory - ignore and remove */
         QCOMPARE(check_file_full("my.~directory"), CSYNC_FILE_EXCLUDE_AND_REMOVE);
         QCOMPARE(check_file_full("/a_folder/my.~directory"), CSYNC_FILE_EXCLUDE_AND_REMOVE);
+
+        /* Adobe lock files are excluded by extension (.idlk/.prlock) */
+        QCOMPARE(check_file_full("Test.idlk"), CSYNC_FILE_EXCLUDE_LIST);
+        QCOMPARE(check_file_full("~Test~0kjyv(.idlk"), CSYNC_FILE_EXCLUDE_LIST);
+        QCOMPARE(check_file_full("subdir/Test.idlk"), CSYNC_FILE_EXCLUDE_LIST);
+        QCOMPARE(check_file_full("Test.prlock"), CSYNC_FILE_EXCLUDE_LIST);
+        QCOMPARE(check_file_full("subdir/Test.prlock"), CSYNC_FILE_EXCLUDE_LIST);
+
+        /* Adobe documents themselves are NOT excluded */
+        QCOMPARE(check_file_full("Test.indd"), CSYNC_NOT_EXCLUDED);
+        QCOMPARE(check_file_full("Test.icml"), CSYNC_NOT_EXCLUDED);
+        QCOMPARE(check_file_full("Test.prproj"), CSYNC_NOT_EXCLUDED);
 
         /* Not excluded because the pattern .netscape/cache requires directory. */
         QCOMPARE(check_file_full(".netscape/cache"), CSYNC_NOT_EXCLUDED);

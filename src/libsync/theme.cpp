@@ -29,6 +29,10 @@
 #include <windows.h>
 #endif
 
+#ifdef Q_OS_MACOS
+#include "theme_mac.h"
+#endif
+
 #include "nextcloudtheme.h"
 
 #ifdef THEME_INCLUDE
@@ -56,6 +60,23 @@ QUrl imagePathToUrl(const QString &imagePath)
 bool shouldPreferSvg()
 {
     return QByteArray(APPLICATION_ICON_SET).toUpper() == QByteArrayLiteral("SVG");
+}
+
+constexpr QRgb darkDestructiveActionTextColor = 0xffdad6;
+constexpr QRgb lightDestructiveActionTextColor = 0xba1a1a;
+
+#ifdef Q_OS_WIN
+constexpr auto settingsPanelBackgroundRole = QPalette::AlternateBase;
+#else
+constexpr auto settingsPanelBackgroundRole = QPalette::Light;
+#endif
+constexpr auto minimumSettingsPanelBrightnessDifference = 8;
+constexpr auto lightSettingsPanelForegroundFraction = 0.03;
+constexpr auto darkSettingsPanelForegroundFraction = 0.06;
+
+QColor destructiveActionColor(const bool darkMode, const QRgb darkColor, const QRgb lightColor)
+{
+    return QColor(darkMode ? darkColor : lightColor);
 }
 
 #ifdef Q_OS_WIN
@@ -256,6 +277,11 @@ QString Theme::configFileName() const
 
 QIcon Theme::applicationIcon() const
 {
+#ifdef Q_OS_MACOS
+    if (auto bundleIcon = loadAppIconFromBundle(); !bundleIcon.isNull()) {
+        return bundleIcon;
+    }
+#endif
     return themeIcon(QStringLiteral(APPLICATION_ICON_NAME "-icon"));
 }
 
@@ -442,13 +468,8 @@ Theme::Theme()
 
 QString Theme::developerStringInfo() const
 {
-    // Shorten Qt's OS name: "macOS Mojave (10.14)" -> "macOS"
-    const auto osStringList = Utility::platformName().split(QLatin1Char(' '));
-    const auto osName = osStringList.at(0);
-
-    const auto devString = QString(tr("%1 Desktop Client Version %2 (%3 running on %4)", "%1 is application name. %2 is the human version string. %3 is the operating system name. %4 is the platform name (wayland, x11, …)"))
-    .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING), osName, qGuiApp->platformName());
-
+    const auto devString = QString(tr("%1 Desktop Client Version %2", "%1 is application name. %2 is the human version string."))
+    .arg(APPLICATION_NAME, QString::fromLatin1(MIRALL_HUMAN_VERSION_STRING));
     return devString;
 }
 
@@ -570,7 +591,7 @@ QString Theme::systrayIconFlavor(bool mono) const
 void Theme::setSystrayUseMonoIcons(bool mono)
 {
     _mono = mono;
-    emit systrayUseMonoIconsChanged(mono);
+    Q_EMIT systrayUseMonoIconsChanged(mono);
 }
 
 bool Theme::systrayUseMonoIcons() const
@@ -612,6 +633,8 @@ QString Theme::gitSHA1() const
     const QString githubPrefix(QLatin1String(
         "https://github.com/nextcloud/desktop/commit/"));
     const QString gitSha1(QLatin1String(GIT_SHA1));
+    //: %1 is the full Git commit URL. %2 is the abbreviated Git revision. %3 is the build date.
+    //: %4 is the build time. %5 is the Qt version. %6 is the TLS library version.
     devString = QCoreApplication::translate("nextcloudTheme::aboutInfo()",
         "<p><small>Built from Git revision <a href=\"%1\">%2</a>"
         " on %3, %4 using Qt %5, %6</small></p>")
@@ -823,16 +846,18 @@ QPixmap Theme::wizardHeaderLogo() const
 QPixmap Theme::wizardHeaderBanner() const
 {
     QColor c = wizardHeaderBackgroundColor();
-    if (!c.isValid())
+    if (!c.isValid()) {
         return QPixmap();
+    }
 
     QSize size(750, 78);
     if (auto screen = qApp->primaryScreen()) {
         // Adjust the the size if there is a different DPI. (Issue #6156)
         // Indeed, this size need to be big enough to for the banner height, and the wizard's width
         auto ratio = screen->logicalDotsPerInch() / 96.;
-        if (ratio > 1.)
+        if (ratio > 1.) {
             size *= ratio;
+        }
     }
     QPixmap pix(size);
     pix.fill(wizardHeaderBackgroundColor());
@@ -897,8 +922,9 @@ QString Theme::versionSwitchOutput() const
 #endif
     stream << "Using Qt " << qVersion() << ", built against Qt " << QT_VERSION_STR << Qt::endl;
 
-    if(!QGuiApplication::platformName().isEmpty())
+    if (!QGuiApplication::platformName().isEmpty()) {
         stream << "Using Qt platform plugin '" << QGuiApplication::platformName() << "'" << Qt::endl;
+    }
 
     stream << "Using '" << QSslSocket::sslLibraryVersionString() << "'" << Qt::endl;
     stream << "Running on " << Utility::platformName() << ", " << QSysInfo::currentCpuArchitecture() << Qt::endl;
@@ -915,6 +941,24 @@ double Theme::getColorDarkness(const QColor &color)
 bool Theme::isDarkColor(const QColor &color)
 {
     return getColorDarkness(color) > 0.5;
+}
+
+QColor Theme::settingsPanelColor(const QPalette &palette)
+{
+    const auto windowColor = palette.color(QPalette::Window);
+    auto panelColor = palette.color(settingsPanelBackgroundRole);
+    if (qAbs(qGray(panelColor.rgb()) - qGray(windowColor.rgb())) >= minimumSettingsPanelBrightnessDifference) {
+        return panelColor;
+    }
+
+    const auto foreground = palette.color(QPalette::WindowText);
+    const auto fraction = isDarkColor(windowColor) ? darkSettingsPanelForegroundFraction : lightSettingsPanelForegroundFraction;
+    const auto blend = [fraction](const auto background, const auto text) {
+        return background * (1.0 - fraction) + text * fraction;
+    };
+    return QColor::fromRgbF(blend(windowColor.redF(), foreground.redF()),
+                            blend(windowColor.greenF(), foreground.greenF()),
+                            blend(windowColor.blueF(), foreground.blueF()));
 }
 
 QColor Theme::getBackgroundAwareLinkColor(const QColor &backgroundColor)
@@ -1026,6 +1070,11 @@ QColor Theme::defaultColor()
     return QColor{NEXTCLOUD_BACKGROUND_COLOR};
 }
 
+QColor Theme::destructiveActionTextColor() const
+{
+    return destructiveActionColor(darkMode(), darkDestructiveActionTextColor, lightDestructiveActionTextColor);
+}
+
 void Theme::connectToPaletteSignal() const
 {
     if (const auto ptr = qobject_cast<QGuiApplication*>(qApp)) {
@@ -1121,14 +1170,14 @@ void Theme::setOverrideServerUrl(const QString &overrideServerUrl)
     if (_overrideServerUrl != validOverrideServerUrl) {
         _overrideServerUrl = validOverrideServerUrl;
         updateMultipleOverrideServers();
-        emit overrideServerUrlChanged();
+        Q_EMIT overrideServerUrlChanged();
     }
 }
 void Theme::setForceOverrideServerUrl(bool forceOverride)
 {
     if (_forceOverrideServerUrl != forceOverride) {
         _forceOverrideServerUrl = forceOverride;
-        emit forceOverrideServerUrlChanged();
+        Q_EMIT forceOverrideServerUrlChanged();
     }
 }
 
@@ -1136,7 +1185,7 @@ void Theme::setVfsEnabled(bool enabled)
 {
     if (_isVfsEnabled != enabled) {
         _isVfsEnabled = enabled;
-        emit vfsEnabledChanged();
+        Q_EMIT vfsEnabledChanged();
     }
 }
 
@@ -1144,7 +1193,7 @@ void Theme::setStartLoginFlowAutomatically(bool startLoginFlowAuto)
 {
     if (_startLoginFlowAutomatically != startLoginFlowAuto) {
         _startLoginFlowAutomatically = startLoginFlowAuto;
-        emit startLoginFlowAutomaticallyChanged();
+        Q_EMIT startLoginFlowAutomaticallyChanged();
     }
 }
 

@@ -42,15 +42,16 @@ public:
         emit predefinedStatusesFetched(_predefinedStatuses);
     }
 
-    void setUserStatus(const OCC::UserStatus &userStatus) override
+    [[nodiscard]] bool setUserStatus(const OCC::UserStatus &userStatus) override
     {
         if (_couldNotSetUserStatusMessage) {
             emit error(Error::CouldNotSetUserStatus);
-            return;
+            return false;
         }
 
         _userStatusSetByCallerOfSetUserStatus = userStatus;
         emit UserStatusConnector::userStatusSet();
+        return true;
     }
 
     void clearMessage() override

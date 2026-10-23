@@ -17,6 +17,7 @@
 #include "configfile.h"
 #include "propagatorjobs.h"
 #include "syncengine.h"
+#include "syncoptions.h"
 
 #include <QFile>
 #include <QtTest>
@@ -24,6 +25,7 @@
 #include <filesystem>
 
 using namespace OCC;
+using namespace Qt::StringLiterals;
 
 namespace {
 
@@ -42,8 +44,9 @@ bool expectConflict(FileInfo state, const QString path)
 {
     PathComponents pathComponents(path);
     auto base = state.find(pathComponents.parentDirComponents());
-    if (!base)
+    if (!base) {
         return false;
+    }
     for (const auto &item : std::as_const(base->children)) {
         if (item.name.startsWith(pathComponents.fileName()) && item.name.contains("(case clash from")) {
             return true;
@@ -88,13 +91,17 @@ int itemSuccessfullyCompletedGetRank(const ItemCompletedSpy &spy, const QString 
     return -1;
 }
 
+constexpr quint64 operator""_MiB(quint64 value) {
+    return value * 1024LL * 1024LL;
+}
+
 }
 
 class TestSyncEngine : public QObject
 {
     Q_OBJECT
 
-private slots:
+private Q_SLOTS:
     void initTestCase()
     {
         Logger::instance()->setLogFlush(true);
@@ -466,8 +473,9 @@ private slots:
 
         int nGET = 0;
         fakeFolder.setServerOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &, QIODevice *) {
-            if (op == QNetworkAccessManager::GetOperation)
+            if (op == QNetworkAccessManager::GetOperation) {
                 ++nGET;
+            }
             return nullptr;
         });
 
@@ -481,8 +489,9 @@ private slots:
         fakeFolder.localModifier().setContents("A/a1", 'C');
         fakeFolder.localModifier().setModTime("A/a1", mtime);
         fakeFolder.remoteModifier().setContents("A/a1", 'C');
-        if (!sameMtime)
+        if (!sameMtime) {
             mtime = mtime.addDays(1);
+        }
         fakeFolder.remoteModifier().setModTime("A/a1", mtime);
         remoteInfo.find("A/a1")->checksums = checksums;
         QVERIFY(fakeFolder.syncOnce());
@@ -539,12 +548,15 @@ private slots:
         connect(&fakeFolder.syncEngine(), &SyncEngine::aboutToPropagate, [&](SyncFileItemVector &items) {
             SyncFileItemPtr a1, b1, c1;
             for (auto &item : items) {
-                if (item->_file == "A/a1")
+                if (item->_file == "A/a1") {
                     a1 = item;
-                if (item->_file == "B/b1")
+                }
+                if (item->_file == "B/b1") {
                     b1 = item;
-                if (item->_file == "C/c1")
+                }
+                if (item->_file == "C/c1") {
                     c1 = item;
+                }
             }
 
             // a1: should have local size and modtime
@@ -643,10 +655,12 @@ private slots:
         fakeFolder.setServerOverride([&](QNetworkAccessManager::Operation op, const QNetworkRequest &request, QIODevice *) -> QNetworkReply * {
             if (op == QNetworkAccessManager::GetOperation) {
                 auto reply = new FakeGetReply(fakeFolder.remoteModifier(), op, request, &parent);
-                if (!checksumValue.isNull())
+                if (!checksumValue.isNull()) {
                     reply->setRawHeader(OCC::checkSumHeaderC, checksumValue);
-                if (!contentMd5Value.isNull())
+                }
+                if (!contentMd5Value.isNull()) {
                     reply->setRawHeader(OCC::contentMd5HeaderC, contentMd5Value);
+                }
                 return reply;
             } else if (op == QNetworkAccessManager::CustomOperation) {
                 if (request.hasRawHeader(OCC::checksumRecalculateOnServerHeaderC)) {
@@ -2410,6 +2424,103 @@ private slots:
         QVERIFY(fakeFolder.syncOnce());
         const auto directoryItem = fakeFolder.remoteModifier().find("directory");
         QCOMPARE(directoryItem, nullptr);
+    }
+
+    void testUploadWhileFileIsChanging()
+    {
+        // While files are still being copied/saved it is possible that the sync
+        // engine discovers a new file while it's still being written to.
+        // With a small enough file size during discovery the propagation will
+        // be handled by a PropagateUploadFileV1 job.
+        // This is fine as long as it stays at a small file size, otherwise its
+        // implementation of the old chunking algorithm will be used.  That was
+        // still available until Nextcloud 30, since then any chunked uploads
+        // performed with the now-removed API will be finished right after the
+        // first chunk was uploaded: with the old V1 chunking system the server
+        // did not respond with an ETag until the final chunk was uploaded.
+        // Since the removal the ETag is always present in the response, which
+        // lead the client to believe that all chunks finished uploading, and
+        // considers the upload to be done.
+
+        FakeFolder fakeFolder{FileInfo{}};
+        fakeFolder.syncEngine().account()->setCapabilities({ { "dav", QVariantMap{ {"chunking", "1.0"} } } });
+        QVERIFY(fakeFolder.syncOnce());
+
+        const auto changemePath = fakeFolder.localPath().append("/changeme");
+        QFile changemeFile{changemePath};
+        QVERIFY(changemeFile.open(QIODevice::WriteOnly | QIODevice::Unbuffered));
+        QVERIFY(fakeFolder.localModifier().find("changeme").exists());
+        QCOMPARE(changemeFile.write("AA"), 2);
+
+        auto syncOptions = fakeFolder.syncEngine().syncOptions();
+        syncOptions._initialChunkSize = 5_MiB;
+        fakeFolder.syncEngine().setSyncOptions(syncOptions);
+
+        // the file should be discovered with an initial size of 2 bytes
+        // --> propagation is done by PropagateUploadFileV1
+        QSignalSpy itemDiscoveredSpy(&fakeFolder.syncEngine(), &OCC::SyncEngine::itemDiscovered);
+        fakeFolder.scheduleSync();
+        fakeFolder.execUntilBeforePropagation();
+        QCOMPARE(itemDiscoveredSpy.size(), 1);
+        {
+            const auto discoveredItem = itemDiscoveredSpy.takeFirst().takeFirst().value<OCC::SyncFileItemPtr>();
+            QCOMPARE(discoveredItem->_size, 2);
+        }
+
+        // just before propagation starts, the file size changed!
+        // the PropagateUploadFileV1 job would then try to upload the file in
+        // chunks as it's now large enough to be chunked (25MiB).
+        const QByteArray oneMegabyteOfScreaming = "A"_ba.repeated(1_MiB);
+        for (auto i = 0; i < 25; i++) {
+            changemeFile.write(oneMegabyteOfScreaming);
+        }
+
+        // finish the sync: the file should be reuploaded on the next sync run,
+        // and nothing should have been uploaded
+        ItemCompletedSpy itemCompleteSpy(fakeFolder);
+        QVERIFY(!fakeFolder.execUntilFinished());
+        QVERIFY(!itemDidCompleteSuccessfully(itemCompleteSpy, "changeme"));
+        QCOMPARE(itemCompleteSpy.findItem("changeme")->_errorString, "Local file changed during sync.");
+        QVERIFY(fakeFolder.syncEngine().isAnotherSyncNeeded());
+        QCOMPARE(fakeFolder.currentRemoteState().children.size(), 0);
+
+        // retry the sync again -- the file is still changing
+        // this time as the file size is large enough the correct chunking
+        // system from PropagateUploadFileNG would be used
+        itemDiscoveredSpy.clear();
+        itemCompleteSpy.clear();
+        fakeFolder.scheduleSync();
+        fakeFolder.execUntilBeforePropagation();
+        QCOMPARE(itemDiscoveredSpy.size(), 1);
+        {
+            const auto discoveredItem = itemDiscoveredSpy.takeFirst().takeFirst().value<OCC::SyncFileItemPtr>();
+            QCOMPARE(discoveredItem->_size, 25_MiB + 2);
+        }
+        for (auto i = 0; i < 25; i++) {
+            changemeFile.write(oneMegabyteOfScreaming);
+        }
+        // and we fail again!
+        QVERIFY(!fakeFolder.execUntilFinished());
+        QVERIFY(!itemDidCompleteSuccessfully(itemCompleteSpy, "changeme"));
+        QCOMPARE(itemCompleteSpy.findItem("changeme")->_errorString, "Local file changed during sync.");
+        QVERIFY(fakeFolder.syncEngine().isAnotherSyncNeeded());
+        QCOMPARE(fakeFolder.currentRemoteState().children.size(), 0);
+
+        // the file is now complete, the next sync should work and result in the
+        // same remote and local states.  again, still using the chunking from
+        // the PropagateUploadFileNG job
+        changemeFile.close();
+        itemDiscoveredSpy.clear();
+        itemCompleteSpy.clear();
+        QVERIFY(fakeFolder.syncOnce());
+        QCOMPARE(itemDiscoveredSpy.size(), 1);
+        {
+            const auto discoveredItem = itemDiscoveredSpy.takeFirst().takeFirst().value<OCC::SyncFileItemPtr>();
+            QCOMPARE(discoveredItem->_size, 50_MiB + 2);
+        }
+        QVERIFY(itemDidCompleteSuccessfully(itemCompleteSpy, "changeme"));
+        QVERIFY(!fakeFolder.syncEngine().isAnotherSyncNeeded());
+        QCOMPARE(fakeFolder.currentLocalState(), fakeFolder.currentRemoteState());
     }
 };
 
