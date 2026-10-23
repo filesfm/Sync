@@ -10,6 +10,7 @@ set(CMAKE_AUTOMOC TRUE)
 
 find_package(Qt${QT_VERSION_MAJOR}Core5Compat ${REQUIRED_QT_VERSION} CONFIG QUIET)
 find_package(Qt${QT_VERSION_MAJOR} OPTIONAL_COMPONENTS HttpServer CONFIG QUIET)
+find_package(Qt${QT_VERSION_MAJOR} ${REQUIRED_QT_VERSION} REQUIRED COMPONENTS QuickTest)
 
 add_library(testutils
   STATIC
@@ -96,6 +97,9 @@ nextcloud_add_test(Capabilities)
 nextcloud_add_test(PushNotifications)
 nextcloud_add_test(Theme)
 nextcloud_add_test(IconUtils)
+nextcloud_add_test(CustomStateIcons)
+target_compile_definitions(CustomStateIconsTest PRIVATE NEXTCLOUD_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(CustomStateIconsTest PRIVATE Qt::Gui)
 nextcloud_add_test(SetUserStatusDialog)
 nextcloud_add_test(UnifiedSearchListmodel)
 nextcloud_add_test(ActivityListModel)
@@ -155,7 +159,7 @@ endif()
 
 if( UNIX AND NOT APPLE )
     nextcloud_add_test(InotifyWatcher)
-endif(UNIX AND NOT APPLE)
+endif()
 
 if (WIN32)
     include_directories(
@@ -173,9 +177,11 @@ nextcloud_add_test(LongPath)
 nextcloud_add_benchmark(LargeSync)
 
 nextcloud_add_test(Account)
+nextcloud_add_test(AccountState)
 nextcloud_add_test(Folder)
 nextcloud_add_test(FolderMan)
 nextcloud_add_test(RemoteWipe)
+nextcloud_add_test(Migration)
 
 if(NOT BUILD_FILE_PROVIDER_MODULE)
     # the File Provider build crashes this test in CI for some reason
@@ -192,4 +198,4 @@ find_package(CMocka)
 if (CMOCKA_FOUND)
     include(AddCMockaTest)
     add_subdirectory(csync)
-endif (CMOCKA_FOUND)
+endif ()

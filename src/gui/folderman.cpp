@@ -14,6 +14,7 @@
 
 #include "folderman.h"
 #include "configfile.h"
+#include "settings/migration.h"
 #include "folder.h"
 #include "syncresult.h"
 #include "theme.h"
@@ -362,7 +363,7 @@ int FolderMan::setupFoldersMigration()
     QDir storageDir(cfg.configPath());
     _folderConfigPath = cfg.configPath();
 
-    const auto legacyConfigPath = ConfigFile::discoveredLegacyConfigPath();
+    const auto legacyConfigPath = Migration::discoveredLegacyConfigPath();
     const auto configPath = legacyConfigPath.isEmpty() ? _folderConfigPath : legacyConfigPath;
 
     qCInfo(lcFolderMan) << "Setup folders from " << configPath << "(migration)";

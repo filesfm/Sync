@@ -8,13 +8,17 @@
 #define CONFIGFILE_H
 
 #include "owncloudlib.h"
-#include <memory>
-#include <QSharedPointer>
+#include "settings/managedproxysettings.h"
+#include "settings/managedsettings.h"
 #include <QSettings>
+#include <QSharedPointer>
 #include <QString>
 #include <QVariant>
-#include <chrono>
 #include <QVersionNumber>
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <vector>
 
 class QWidget;
 class QHeaderView;
@@ -23,6 +27,16 @@ class ExcludedFiles;
 namespace OCC {
 
 class AbstractCredentials;
+class Migration;
+struct ServerManagedSettings;
+
+// Managed virtual files mode resolved from the settings hierarchy.
+// enabled is true when the resolved mode is a virtual files mode, false when it is off.
+struct ManagedVirtualFilesMode {
+    bool isManaged = false;
+    bool isEnforced = false;
+    bool enabled = false;
+};
 
 /**
  * @brief The ConfigFile class
@@ -123,6 +137,16 @@ public:
     [[nodiscard]] int proxyType() const;
     [[nodiscard]] QString proxyHostName() const;
     [[nodiscard]] int proxyPort() const;
+
+    // Proxy type, host and port resolved together from the settings hierarchy.
+    [[nodiscard]] ManagedProxySettings managedProxySettings() const;
+    // Server values apply only to the account that supplied them.
+    [[nodiscard]] ManagedProxySettings managedProxySettings(const ServerManagedSettings &accountServerSettings) const;
+
+    // Virtual files mode resolved from the settings hierarchy.
+    [[nodiscard]] ManagedVirtualFilesMode managedVirtualFilesMode() const;
+    // Server values apply only to the supplying account.
+    [[nodiscard]] ManagedVirtualFilesMode managedVirtualFilesMode(const ServerManagedSettings &accountServerSettings) const;
     [[nodiscard]] bool proxyNeedsAuth() const;
     [[nodiscard]] QString proxyUser() const;
     [[nodiscard]] QString proxyPassword() const;
@@ -241,6 +265,28 @@ public:
     [[nodiscard]] QString desktopEnterpriseChannel() const;
     void setDesktopEnterpriseChannel(const QString &channel);
 
+    [[nodiscard]] ServerManagedSettings serverManagedSettings() const;
+    void setServerManagedSettings(const ServerManagedSettings &settings);
+
+    // Enforcement aware read: resolves across device, server, user and defaults, with source and enforcement.
+    [[nodiscard]] ResolvedSetting getConfig(const QString &name, const QVariant &builtinDefault = {}, const QString &connectionGroupName = {}) const;
+    // Typed read; the value is converted to the schema type, T is the caller's type.
+    template<typename T>
+    [[nodiscard]] T getConfig(const QString &name, const QString &connectionGroupName = {}) const
+    {
+        return getConfig(name, QVariant{}, connectionGroupName).value.template value<T>();
+    }
+    // Writes the user config, unless the effective value is enforced; returns false then.
+    bool setConfig(const QString &name, const QVariant &value, const QString &connectionGroupName = {});
+    [[nodiscard]] bool isEnforced(const QString &name, const QString &connectionGroupName = {}) const;
+    [[nodiscard]] SettingSourceType sourceOf(const QString &name, const QString &connectionGroupName = {}) const;
+    // The label shown next to an enforced control, chosen by where the value came from.
+    [[nodiscard]] QString sourceLabel(const QString &name) const;
+
+    using DeviceSourcesFactory = std::function<std::vector<std::unique_ptr<SettingSource>>()>;
+    // For tests; an empty factory restores the platform sources.
+    static void setDeviceSourcesFactory(DeviceSourcesFactory factory);
+
     [[nodiscard]] bool hasDesktopEnterpriseChannel() const;
 
     /// Enforce a specific language used for the UI
@@ -258,10 +304,6 @@ public:
     /// Add the system and user exclude file path to the ExcludedFiles instance.
     static void setupDefaultExcludeFilePaths(ExcludedFiles &excludedFiles);
 
-    /// Set during first time migration of legacy accounts in AccountManager
-    [[nodiscard]] static QString discoveredLegacyConfigPath();
-    static void setDiscoveredLegacyConfigPath(const QString &discoveredLegacyConfigPath);
-
     /// File Provider Domain UUID to Account ID mapping
 
     /**
@@ -273,6 +315,9 @@ public:
     [[nodiscard]] bool fileProviderDomainsAppSandboxMigrationCompleted() const;
     void setFileProviderDomainsAppSandboxMigrationCompleted(bool completed);
 
+    [[nodiscard]] QStringList backupConfigFiles();
+    void applyMigrationDefaults();
+
     /// App-level macOS File Provider mode: when enabled, every account gets a file
     /// provider domain and classic sync folders are unavailable (the File Provider
     /// extension and the FinderSync extension cannot run at the same time).
@@ -280,24 +325,10 @@ public:
     [[nodiscard]] bool macFileProviderModeEnabledIsSet() const;
     void setMacFileProviderModeEnabled(bool enabled);
 
-    /// Helper function for migration/upgrade proccess
-    enum MigrationPhase {
-        NotStarted,
-        SetupConfigFile,
-        SetupUsers,
-        SetupFolders,
-        Done
-    };
-    [[nodiscard]] bool isUpgrade() const;
-    [[nodiscard]] bool isDowngrade() const;
-    [[nodiscard]] bool shouldTryUnbrandedToBrandedMigration() const;
-    [[nodiscard]] bool isUnbrandedToBrandedMigrationInProgress() const;
-    [[nodiscard]] bool shouldTryToMigrate() const;
-    /// Does the current app has a different version of the config version
-    [[nodiscard]] bool hasVersionChanged() const;
-    [[nodiscard]] bool isMigrationInProgress() const;
-    [[nodiscard]] MigrationPhase migrationPhase() const;
-    void setMigrationPhase(const MigrationPhase phase);
+    /// Whether the user was already told that a policy turned virtual files off.
+    [[nodiscard]] bool fileProviderVfsEnforcedOffNotified() const;
+    void setFileProviderVfsEnforcedOffNotified(bool notified);
+
     static constexpr char unbrandedAppName[] = "Nextcloud";
     static constexpr char legacyAppName[] = "Owncloud";
 
@@ -320,19 +351,22 @@ public:
     static constexpr char moveToTrashC[] = "moveToTrash";
     static constexpr char updateChannelC[] = "updateChannel";
     static constexpr char autoUpdateCheckC[] = "autoUpdateCheck";
+    static constexpr char skipUpdateCheckC[] = "skipUpdateCheck";
     static constexpr char useUploadLimitC[] = "BWLimit/useUploadLimit";
     static constexpr char useDownloadLimitC[] = "BWLimit/useDownloadLimit";
     static constexpr char uploadLimitC[] = "BWLimit/uploadLimit";
     static constexpr char downloadLimitC[] = "BWLimit/downloadLimit";
 
 protected:
-    [[nodiscard]] QVariant getPolicySetting(const QString &policy, const QVariant &defaultValue = QVariant()) const;
     void storeData(const QString &group, const QString &key, const QVariant &value);
     [[nodiscard]] QVariant retrieveData(const QString &group, const QString &key) const;
     void removeData(const QString &group, const QString &key);
     [[nodiscard]] bool dataExists(const QString &group, const QString &key) const;
 
 private:
+    [[nodiscard]] ResolvedSetting
+    resolveSetting(const QString &name, const QVariant &builtinDefault, const QString &connectionGroupName, const ServerManagedSettings &serverSettings) const;
+
     [[nodiscard]] QVariant getValue(const QString &param, const QString &group = QString(),
         const QVariant &defaultValue = QVariant()) const;
     void setValue(const QString &key, const QVariant &value);
@@ -342,8 +376,6 @@ private:
     using SharedCreds = QSharedPointer<AbstractCredentials>;
 
     static QString _confDir;
-    static QString _discoveredLegacyConfigPath;
-    static MigrationPhase _migrationPhase;
 };
 }
 #endif // CONFIGFILE_H

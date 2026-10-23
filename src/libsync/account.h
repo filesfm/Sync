@@ -13,6 +13,8 @@
 #include "clientstatusreporting.h"
 #include "common/utility.h"
 #include "common/vfs.h"
+#include "settings/managedproxysettings.h"
+#include "settings/servermanagedsettings.h"
 #include "syncfileitem.h"
 #include "filesfm/messaging.h"
 #include "updatechannel.h"
@@ -30,6 +32,7 @@
 #include <QSharedPointer>
 #include <QHttpMultiPart>
 #include <QTimer>
+#include <QUuid>
 
 #ifndef TOKEN_AUTH_ONLY
 #include <QPixmap>
@@ -79,6 +82,7 @@ class OWNCLOUDSYNC_EXPORT Account : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QString id MEMBER _id)
+    Q_PROPERTY(QUuid uuid MEMBER _uuid)
     Q_PROPERTY(QString davUser MEMBER _davUser)
     Q_PROPERTY(QString davDisplayName MEMBER _davDisplayName)
     Q_PROPERTY(QString prettyName READ prettyName NOTIFY prettyNameChanged)
@@ -382,6 +386,7 @@ public:
 
     void updateServerSubcription();
     void updateDesktopEnterpriseChannel();
+    void updateServerManagedSettings();
 
     // Network-related settings
     [[nodiscard]] AccountNetworkProxySetting networkProxySetting() const;
@@ -413,6 +418,16 @@ public:
                           const QString &proxyUser,
                           const QString &proxyPassword);
 
+    [[nodiscard]] bool proxySettingsAreManaged() const;
+
+    void applyManagedProxySettings(const OCC::ManagedProxySettings &managedProxy);
+    void applyProxyToNetworkAccessManager();
+    [[nodiscard]] const OCC::ManagedProxySettings &managedProxySettings() const;
+
+    [[nodiscard]] QNetworkProxy::ProxyType accountProxyType() const;
+    [[nodiscard]] QString accountProxyHostName() const;
+    [[nodiscard]] int accountProxyPort() const;
+
     [[nodiscard]] AccountNetworkTransferLimitSetting uploadLimitSetting() const;
     void setUploadLimitSetting(AccountNetworkTransferLimitSetting setting);
 
@@ -431,6 +446,8 @@ public:
 
     [[nodiscard]] UpdateChannel enterpriseUpdateChannel() const;
     void setEnterpriseUpdateChannel(const UpdateChannel &channel);
+
+    [[nodiscard]] ServerManagedSettings serverManagedSettings() const;
 
     [[nodiscard]] bool enforceUseHardwareTokenEncryption() const;
 
@@ -453,6 +470,8 @@ public:
 #endif
 
     [[nodiscard]] bool serverHasIntegration() const;
+
+    [[nodiscard]] QUuid uuid() const;
 
 public Q_SLOTS:
     /// Used when forgetting credentials
@@ -537,6 +556,7 @@ private:
     Account(QObject *parent = nullptr);
     void setSharedThis(AccountPtr sharedThis);
     void updateServerColors();
+    void updateProxyInUse();
 
     // Pointer to Files.fm Messaging service instance
     class Messaging* _filesFmMessagingService = nullptr;
@@ -619,13 +639,19 @@ public:
     bool _proxyNeedsAuth = false;
     QString _proxyUser;
     QString _proxyPassword;
+    QNetworkProxy::ProxyType _accountProxyType = QNetworkProxy::NoProxy;
+    QString _accountProxyHostName;
+    int _accountProxyPort = 0;
+    OCC::ManagedProxySettings _managedProxy;
     AccountNetworkTransferLimitSetting _uploadLimitSetting = AccountNetworkTransferLimitSetting::NoLimit;
     AccountNetworkTransferLimitSetting _downloadLimitSetting = AccountNetworkTransferLimitSetting::NoLimit;
     unsigned int _uploadLimit = 0;
     unsigned int _downloadLimit = 0;
     bool _serverHasValidSubscription = false;
     UpdateChannel _enterpriseUpdateChannel = UpdateChannel::Invalid;
+    ServerManagedSettings _serverManagedSettings;
     QByteArray _encryptionCertificateFingerprint;
+
 #ifdef BUILD_FILE_PROVIDER_MODULE
     QString _fileProviderDomainIdentifier;
     QByteArray _lastRootETag; // Runtime-only, not persisted
@@ -633,6 +659,7 @@ public:
 
     void updateServerHasIntegration();
     bool _serverHasIntegration;
+    QUuid _uuid;
 
     /* IMPORTANT - remove later - FIXME MS@2019-12-07 -->
      * TODO: For "Log out" & "Remove account": Remove client CA certs and KEY!

@@ -4,6 +4,17 @@ readonly USR_DIR="$(dirname "${BIN_DIR}")"
 readonly TOP_DIR="$(dirname "${USR_DIR}")"
 readonly APPIMAGE_FILE="$(basename "${APPIMAGE}")"
 
+# This launcher replaces linuxdeploy-plugin-qt's generated AppRun, so its
+# apprun-hooks (which would otherwise set these) never run. Without
+# QT_PLUGIN_PATH, Qt can't find the bundled platform plugins (xcb, wayland),
+# and without QML2_IMPORT_PATH/LD_LIBRARY_PATH it falls back to the host's
+# Qt install, if any. With the plugin path restored, Qt's own platform
+# auto-detection already prefers wayland when WAYLAND_DISPLAY is set,
+# falling back to xcb otherwise -- no need to force QT_QPA_PLATFORM.
+export LD_LIBRARY_PATH="${USR_DIR}/lib:${LD_LIBRARY_PATH}"
+export QT_PLUGIN_PATH="${USR_DIR}/plugins"
+export QML2_IMPORT_PATH="${USR_DIR}/qml:${QML2_IMPORT_PATH}"
+
 mkdir -p ~/.local/share/bash-completion/completions
 if [[ ! -e "${HOME}/.local/share/bash-completion/completions/${APPIMAGE_FILE}" ]]; then
 	echo 'filesfmsync_completion() {

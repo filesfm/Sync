@@ -21,6 +21,7 @@
 #include "creds/keychainchunk.h"
 #include "libsync/clientsideencryption.h"
 #include "libsync/configfile.h"
+#include "libsync/settings/migration.h"
 #include "libsync/cookiejar.h"
 #include "libsync/theme.h"
 #include "libsync/clientproxy.h"
@@ -245,7 +246,7 @@ bool AccountManager::restoreFromLegacySettings()
                 qCInfo(lcAccountManager) << "Copy settings" << oCSettings->allKeys().join(", ");
                 settings = std::move(oCSettings);
 
-                ConfigFile::setDiscoveredLegacyConfigPath(configFileInfo.canonicalPath());
+                Migration::setDiscoveredLegacyConfigPath(configFileInfo.canonicalPath());
                 break;
             } else {
                 qCInfo(lcAccountManager) << "Migrate: could not read old config " << configFile;

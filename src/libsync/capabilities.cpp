@@ -6,6 +6,7 @@
 
 #include "capabilities.h"
 #include "configfile.h"
+#include "settings/servermanagedsettings.h"
 
 #include <QVariantMap>
 #include <QLoggingCategory>
@@ -18,7 +19,6 @@ using namespace Qt::StringLiterals;
 namespace OCC {
 
 Q_LOGGING_CATEGORY(lcServerCapabilities, "nextcloud.sync.server.capabilities", QtInfoMsg)
-
 
 Capabilities::Capabilities(const QVariantMap &capabilities)
     : _capabilities(capabilities)
@@ -102,6 +102,11 @@ int Capabilities::shareDefaultPermissions() const
     }
     
     return {};
+}
+
+bool Capabilities::unifiedSharingAvailable() const
+{
+    return _capabilities.contains("sharing"_L1);
 }
 
 bool Capabilities::clientSideEncryptionAvailable() const
@@ -236,6 +241,13 @@ int Capabilities::maxConcurrentChunkUploads() const
 
 bool Capabilities::bulkUpload() const
 {
+    static const auto bulkUploadEnv = qgetenv("NEXTCLOUD_BULK_UPLOAD");
+    if (bulkUploadEnv == "0") {
+        return false;
+    }
+    if (bulkUploadEnv == "1") {
+        return true;
+    }
     return _capabilities["dav"].toMap()["bulkupload"].toByteArray() >= "1.0";
 }
 
@@ -399,6 +411,12 @@ bool Capabilities::serverHasValidSubscription() const
 QString Capabilities::desktopEnterpriseChannel() const
 {
     return _capabilities[QStringLiteral("support")].toMap().value(QStringLiteral("desktopEnterpriseChannel"), ConfigFile().defaultUpdateChannel()).toString();
+}
+
+ServerManagedSettings Capabilities::desktopClientManagedSettings() const
+{
+    const auto desktopClient = _capabilities[QStringLiteral("support")].toMap().value(QStringLiteral("desktopClient")).toMap();
+    return parseServerManagedSettings(desktopClient);
 }
 
 QStringList Capabilities::blacklistedFiles() const

@@ -807,8 +807,8 @@ void FakeMoveReply::respond()
     Q_EMIT finished();
 }
 
-FakeGetReply::FakeGetReply(FileInfo &remoteRootFileInfo, QNetworkAccessManager::Operation op, const QNetworkRequest &request, QObject *parent)
-    : FakeReply { parent }
+FakeGetReply::FakeGetReply(FileInfo &remoteRootFileInfo, QNetworkAccessManager::Operation op, const QNetworkRequest &request, QObject *parent, bool autoRespond)
+    : FakeReply{parent}
 {
     setRequest(request);
     setUrl(request.url());
@@ -823,7 +823,9 @@ FakeGetReply::FakeGetReply(FileInfo &remoteRootFileInfo, QNetworkAccessManager::
                  << " meh;";
     }
     Q_ASSERT_X(fileInfo, Q_FUNC_INFO, "Could not find file on the remote");
-    QMetaObject::invokeMethod(this, &FakeGetReply::respond, Qt::QueuedConnection);
+    if (autoRespond) {
+        QMetaObject::invokeMethod(this, &FakeGetReply::respond, Qt::QueuedConnection);
+    }
 }
 
 void FakeGetReply::respond()
@@ -1322,6 +1324,7 @@ void FakeFolder::switchToVfs(QSharedPointer<OCC::Vfs> vfs)
 
     OCC::VfsSetupParams vfsParams;
     vfsParams.filesystemPath = localPath();
+    vfsParams.rootPath = OCC::FileSystem::Path{localPath()};
     vfsParams.remotePath = _remotePath + u"/"_s;
     vfsParams.account = _account;
     vfsParams.journal = _journalDb.get();

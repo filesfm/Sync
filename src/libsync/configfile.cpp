@@ -8,9 +8,18 @@
 
 #include "common/asserts.h"
 #include "common/utility.h"
+#include "common/vfs.h"
 #include "config.h"
 #include "creds/keychainchunk.h"
 #include "csync_exclude.h"
+#include "settings/devicesources.h"
+#include "settings/managedconfig.h"
+#include "settings/managedsettings.h"
+#include "settings/managedsettingsschema.h"
+#include "settings/migration.h"
+#include "settings/servermanagedsettings.h"
+#include "settings/settingpriorities.h"
+#include "settings/settingsources.h"
 #include "theme.h"
 #include "updatechannel.h"
 #include "version.h"
@@ -25,10 +34,12 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QLoggingCategory>
-#include <QSettings>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QNetworkProxy>
-#include <QStandardPaths>
 #include <QOperatingSystemVersion>
+#include <QSettings>
+#include <QStandardPaths>
 
 #define DEFAULT_REMOTE_POLL_INTERVAL 30000
 #define DEFAULT_MAX_LOG_LINES 20000
@@ -41,7 +52,6 @@ static constexpr char forceSyncIntervalC[] = "forceSyncInterval";
 static constexpr char fullLocalDiscoveryIntervalC[] = "fullLocalDiscoveryInterval";
 static constexpr char notificationRefreshIntervalC[] = "notificationRefreshInterval";
 static constexpr char deleteFilesThresholdC[] = "deleteFilesThreshold";
-static constexpr char skipUpdateCheckC[] = "skipUpdateCheck";
 static constexpr char updateCheckIntervalC[] = "updateCheckInterval";
 static constexpr char updateSegmentC[] = "updateSegment";
 static constexpr char overrideServerUrlC[] = "overrideServerUrl";
@@ -61,6 +71,7 @@ static constexpr char showExperimentalOptionsC[] = "showExperimentalOptions";
 static constexpr char clientPreviousVersionC[] = "clientPreviousVersion";
 static constexpr char fileProviderDomainsAppSandboxMigrationCompletedC[] = "fileProviderDomainsAppSandboxMigrationCompleted";
 static constexpr char macFileProviderModeEnabledC[] = "macFileProviderModeEnabled";
+static constexpr char fileProviderVfsEnforcedOffNotifiedC[] = "fileProviderVfsEnforcedOffNotified";
 static constexpr char fileProviderDomainUuidsGroupC[] = "FileProviderDomainUuids";
 static constexpr char fileProviderAccountIdsGroupC[] = "FileProviderAccountIds";
 
@@ -92,8 +103,30 @@ namespace chrono = std::chrono;
 Q_LOGGING_CATEGORY(lcConfigFile, "nextcloud.sync.configfile", QtInfoMsg)
 
 QString ConfigFile::_confDir = {};
-QString ConfigFile::_discoveredLegacyConfigPath = {};
-ConfigFile::MigrationPhase ConfigFile::_migrationPhase = ConfigFile::MigrationPhase::NotStarted;
+
+namespace
+{
+struct DeviceSourcesOverride {
+    QMutex mutex;
+    ConfigFile::DeviceSourcesFactory factory;
+};
+
+DeviceSourcesOverride &deviceSourcesOverride()
+{
+    static DeviceSourcesOverride instance;
+    return instance;
+}
+
+std::vector<std::unique_ptr<SettingSource>> deviceSources()
+{
+    auto &sourcesOverride = deviceSourcesOverride();
+    const auto factory = [&sourcesOverride] {
+        const QMutexLocker locker(&sourcesOverride.mutex);
+        return sourcesOverride.factory;
+    }();
+    return factory ? factory() : buildDeviceSources();
+}
+}
 
 static chrono::milliseconds millisecondsValue(const QSettings &setting, const char *key,
     chrono::milliseconds defaultValue)
@@ -328,26 +361,6 @@ void ConfigFile::restoreGeometryHeader(QHeaderView *header)
 #endif
 }
 
-QVariant ConfigFile::getPolicySetting(const QString &setting, const QVariant &defaultValue) const
-{
-    if (Utility::isWindows()) {
-        const auto appName = isUnbrandedToBrandedMigrationInProgress() ? unbrandedAppName : Theme::instance()->appNameGUI();
-        // check for policies first and return immediately if a value is found.
-        QSettings userPolicy(QString::fromLatin1(R"(HKEY_CURRENT_USER\Software\Policies\%1\%2)").arg(APPLICATION_VENDOR, appName),
-            QSettings::NativeFormat);
-        if (userPolicy.contains(setting)) {
-            return userPolicy.value(setting);
-        }
-
-        QSettings machinePolicy(QString::fromLatin1(R"(HKEY_LOCAL_MACHINE\Software\Policies\%1\%2)").arg(APPLICATION_VENDOR, appName),
-            QSettings::NativeFormat);
-        if (machinePolicy.contains(setting)) {
-            return machinePolicy.value(setting);
-        }
-    }
-    return defaultValue;
-}
-
 QString ConfigFile::configPath() const
 {
     if (_confDir.isEmpty()) {
@@ -385,7 +398,9 @@ QString ConfigFile::excludeFile(Scope scope) const
         return ConfigFile::excludeFileFromSystem();
     }
 
-    const auto excludeFilePath = scope == LegacyScope ? discoveredLegacyConfigPath() : configPath();
+    const auto excludeFilePath = scope == LegacyScope
+        ? Migration::discoveredLegacyConfigPath()
+        : configPath();
 
     // prefer sync-exclude.lst, but if it does not exist, check for exclude.lst
     QFileInfo exclFileInfo(excludeFilePath, syncExclFile);
@@ -655,42 +670,92 @@ chrono::milliseconds ConfigFile::updateCheckInterval(const QString &connectionGr
 
 bool ConfigFile::skipUpdateCheck(const QString &connectionGroupName) const
 {
-    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
-    QVariant fallback = getValue(QLatin1String(skipUpdateCheckC), groupName, false);
-    fallback = getValue(QLatin1String(skipUpdateCheckC), QString(), fallback);
-
-    QVariant value = getPolicySetting(QLatin1String(skipUpdateCheckC), fallback);
-    return value.toBool();
+    return getConfig<bool>(QLatin1String(skipUpdateCheckC), connectionGroupName);
 }
 
 void ConfigFile::setSkipUpdateCheck(bool skip, const QString &connectionGroupName)
 {
-    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
-    QSettings settings(configFile(), QSettings::IniFormat);
-    settings.beginGroup(groupName);
-
-    settings.setValue(QLatin1String(skipUpdateCheckC), QVariant(skip));
-    settings.sync();
+    // Routed through setConfig so an enforced value is never overwritten.
+    setConfig(QLatin1String(skipUpdateCheckC), skip, connectionGroupName);
 }
 
 bool ConfigFile::autoUpdateCheck(const QString &connectionGroupName) const
 {
-    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
-    QVariant fallback = getValue(QLatin1String(autoUpdateCheckC), groupName, true);
-    fallback = getValue(QLatin1String(autoUpdateCheckC), QString(), fallback);
+    return getConfig<bool>(QLatin1String(autoUpdateCheckC), connectionGroupName);
+}
 
-    QVariant value = getPolicySetting(QLatin1String(autoUpdateCheckC), fallback);
-    return value.toBool();
+ResolvedSetting ConfigFile::getConfig(const QString &name, const QVariant &builtinDefault, const QString &connectionGroupName) const
+{
+    return resolveSetting(name, builtinDefault, connectionGroupName, serverManagedSettings());
+}
+
+ResolvedSetting ConfigFile::resolveSetting(const QString &name,
+                                           const QVariant &builtinDefault,
+                                           const QString &connectionGroupName,
+                                           const ServerManagedSettings &serverSettings) const
+{
+    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
+    auto spec = ManagedSettingsSchema::find(name).value_or(SettingDefinition{name, builtinDefault, false});
+    if (builtinDefault.isValid()) {
+        spec.builtinDefault = builtinDefault;
+    }
+    ManagedSettings resolver;
+    for (auto &deviceSource : deviceSources()) {
+        resolver.addSource(std::move(deviceSource));
+    }
+    resolver.addSource(std::make_unique<UserConfigSource>(configFile(), groupName));
+    resolver.addSource(std::make_unique<UserConfigSource>(configFile(), QString(), SettingPriority::legacyUserConfig));
+    for (auto &serverSource : buildServerSources(serverSettings)) {
+        resolver.addSource(std::move(serverSource));
+    }
+    return resolver.resolve(spec);
+}
+
+bool ConfigFile::setConfig(const QString &name, const QVariant &value, const QString &connectionGroupName)
+{
+    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
+    if (getConfig(name, value, groupName).isEnforced()) {
+        return false;
+    }
+
+    QSettings settings(configFile(), QSettings::IniFormat);
+    // Copy into the [General] section for older clients after a downgrade.
+    settings.setValue(name, value);
+    settings.beginGroup(groupName);
+    settings.setValue(name, value);
+    settings.sync();
+    return true;
+}
+
+bool ConfigFile::isEnforced(const QString &name, const QString &connectionGroupName) const
+{
+    return getConfig(name, {}, connectionGroupName).isEnforced();
+}
+
+SettingSourceType ConfigFile::sourceOf(const QString &name, const QString &connectionGroupName) const
+{
+    return getConfig(name, {}, connectionGroupName).source;
+}
+
+QString ConfigFile::sourceLabel(const QString &name) const
+{
+    if (sourceOf(name) == SettingSourceType::ServerEnforced) {
+        return QCoreApplication::translate("ConfigFile", "Managed by your organization", "User label when setting is enforced and cannot be changed.");
+    }
+    return QCoreApplication::translate("ConfigFile", "Managed by your system administrator", "User label when setting is enforced and cannot be changed.");
+}
+
+void ConfigFile::setDeviceSourcesFactory(DeviceSourcesFactory factory)
+{
+    auto &sourcesOverride = deviceSourcesOverride();
+    const QMutexLocker locker(&sourcesOverride.mutex);
+    sourcesOverride.factory = std::move(factory);
 }
 
 void ConfigFile::setAutoUpdateCheck(bool autoCheck, const QString &connectionGroupName)
 {
-    const auto groupName = connectionGroupName.isEmpty() ? defaultConnectionGroupName() : connectionGroupName;
-    QSettings settings(configFile(), QSettings::IniFormat);
-    settings.beginGroup(groupName);
-
-    settings.setValue(QLatin1String(autoUpdateCheckC), QVariant(autoCheck));
-    settings.sync();
+    // Routed through setConfig so an enforced value is never overwritten.
+    setConfig(QLatin1String(autoUpdateCheckC), autoCheck, connectionGroupName);
 }
 
 int ConfigFile::updateSegment() const
@@ -889,7 +954,7 @@ QVariant ConfigFile::getValue(const QString &param, const QString &group,
     const QVariant &defaultValue) const
 {
     QVariant systemSetting;
-    const auto appName = isUnbrandedToBrandedMigrationInProgress() ? unbrandedAppName : Theme::instance()->appNameGUI();
+    const auto appName = Migration::isUnbrandedToBrandedMigration() ? unbrandedAppName : Theme::instance()->appNameGUI();
     if (Utility::isMac()) {
         QSettings systemSettings(QLatin1String("/Library/Preferences/" APPLICATION_REV_DOMAIN ".plist"), QSettings::NativeFormat);
         if (!group.isEmpty()) {
@@ -942,6 +1007,57 @@ QString ConfigFile::proxyHostName() const
 int ConfigFile::proxyPort() const
 {
     return getValue(QLatin1String(proxyPortC)).toInt();
+}
+
+ManagedProxySettings ConfigFile::managedProxySettings() const
+{
+    // Device policy only; a server proxy default must not reach the shared application proxy.
+    return managedProxySettings(ServerManagedSettings{});
+}
+
+ManagedProxySettings ConfigFile::managedProxySettings(const ServerManagedSettings &accountServerSettings) const
+{
+    // Policy overlay only; the account keeps its own proxy.
+    const auto fromPolicy = [](SettingSourceType source) {
+        return source != SettingSourceType::BuiltinDefault && source != SettingSourceType::UserConfig;
+    };
+
+    const auto type = resolveSetting(QStringLiteral("proxyType"), QNetworkProxy::DefaultProxy, {}, accountServerSettings);
+    const auto host = resolveSetting(QStringLiteral("proxyHost"), {}, {}, accountServerSettings);
+    const auto port = resolveSetting(QStringLiteral("proxyPort"), {}, {}, accountServerSettings);
+
+    ManagedProxySettings managed;
+    managed.typeManaged = fromPolicy(type.source);
+    managed.hostManaged = fromPolicy(host.source);
+    managed.portManaged = fromPolicy(port.source);
+    managed.typeEnforced = type.isEnforced();
+    managed.hostEnforced = host.isEnforced();
+    managed.portEnforced = port.isEnforced();
+    managed.isEnforced = managed.typeEnforced || managed.hostEnforced || managed.portEnforced;
+    managed.isManaged = managed.typeManaged || managed.hostManaged || managed.portManaged;
+    managed.proxyType = type.value.toInt();
+    managed.proxyHostName = host.value.toString();
+    managed.proxyPort = port.value.toInt();
+    return managed;
+}
+
+ManagedVirtualFilesMode ConfigFile::managedVirtualFilesMode() const
+{
+    return managedVirtualFilesMode(serverManagedSettings());
+}
+
+ManagedVirtualFilesMode ConfigFile::managedVirtualFilesMode(const ServerManagedSettings &accountServerSettings) const
+{
+    const auto key = QStringLiteral("virtualFilesMode");
+    const auto resolved = resolveSetting(key, {}, {}, accountServerSettings);
+    const auto mode = Vfs::modeFromString(resolved.value.toString());
+    const auto fromPolicy = resolved.source != SettingSourceType::BuiltinDefault && resolved.source != SettingSourceType::UserConfig;
+
+    ManagedVirtualFilesMode managed;
+    managed.isManaged = fromPolicy && static_cast<bool>(mode);
+    managed.isEnforced = managed.isManaged && resolved.isEnforced();
+    managed.enabled = mode && *mode != Vfs::Off;
+    return managed;
 }
 
 bool ConfigFile::proxyNeedsAuth() const
@@ -1028,57 +1144,51 @@ void ConfigFile::setDownloadLimit(int kbytes)
 
 QPair<bool, qint64> ConfigFile::newBigFolderSizeLimit() const
 {
-    auto defaultValue = Theme::instance()->newBigFolderSizeLimit();
-    const auto fallback = getValue(newBigFolderSizeLimitC, QString(), defaultValue).toLongLong();
-    const auto value = getPolicySetting(QLatin1String(newBigFolderSizeLimitC), fallback).toLongLong();
+    const auto themeDefault = QVariant::fromValue<qint64>(Theme::instance()->newBigFolderSizeLimit());
+    const auto value = getConfig(QLatin1String(newBigFolderSizeLimitC), themeDefault).value.toLongLong();
     const bool use = value >= 0 && useNewBigFolderSizeLimit();
     return qMakePair(use, qMax<qint64>(0, value));
 }
 
 void ConfigFile::setNewBigFolderSizeLimit(bool isChecked, qint64 mbytes)
 {
-    setValue(newBigFolderSizeLimitC, mbytes);
-    setValue(useNewBigFolderSizeLimitC, isChecked);
+    setConfig(QLatin1String(newBigFolderSizeLimitC), mbytes);
+    setConfig(QLatin1String(useNewBigFolderSizeLimitC), isChecked);
 }
 
 bool ConfigFile::confirmExternalStorage() const
 {
-    const auto fallback = getValue(confirmExternalStorageC, QString(), true);
-    return getPolicySetting(QLatin1String(confirmExternalStorageC), fallback).toBool();
+    return getConfig<bool>(QLatin1String(confirmExternalStorageC));
 }
 
 bool ConfigFile::useNewBigFolderSizeLimit() const
 {
-    const auto fallback = getValue(useNewBigFolderSizeLimitC, QString(), true);
-    return getPolicySetting(QLatin1String(useNewBigFolderSizeLimitC), fallback).toBool();
+    return getConfig<bool>(QLatin1String(useNewBigFolderSizeLimitC));
 }
 
 bool ConfigFile::notifyExistingFoldersOverLimit() const
 {
-    const auto fallback = getValue(notifyExistingFoldersOverLimitC, {}, false);
-    return getPolicySetting(QString(notifyExistingFoldersOverLimitC), fallback).toBool();
+    return getConfig<bool>(QLatin1String(notifyExistingFoldersOverLimitC));
 }
 
 void ConfigFile::setNotifyExistingFoldersOverLimit(const bool notify)
 {
-    setValue(notifyExistingFoldersOverLimitC, notify);
+    setConfig(QLatin1String(notifyExistingFoldersOverLimitC), notify);
 }
 
 bool ConfigFile::stopSyncingExistingFoldersOverLimit() const
 {
-    const auto notifyExistingBigEnabled = notifyExistingFoldersOverLimit();
-    const auto fallback = getValue(stopSyncingExistingFoldersOverLimitC, {}, notifyExistingBigEnabled);
-    return getPolicySetting(QString(stopSyncingExistingFoldersOverLimitC), fallback).toBool();
+    return getConfig(QLatin1String(stopSyncingExistingFoldersOverLimitC), notifyExistingFoldersOverLimit()).value.toBool();
 }
 
 void ConfigFile::setStopSyncingExistingFoldersOverLimit(const bool stopSyncing)
 {
-    setValue(stopSyncingExistingFoldersOverLimitC, stopSyncing);
+    setConfig(QLatin1String(stopSyncingExistingFoldersOverLimitC), stopSyncing);
 }
 
 void ConfigFile::setConfirmExternalStorage(bool isChecked)
 {
-    setValue(confirmExternalStorageC, isChecked);
+    setConfig(QLatin1String(confirmExternalStorageC), isChecked);
 }
 
 bool ConfigFile::moveToTrash() const
@@ -1308,6 +1418,17 @@ void ConfigFile::setDesktopEnterpriseChannel(const QString &channel)
     settings.setValue(QLatin1String(desktopEnterpriseChannelName), UpdateChannel::fromString(channel).toString());
 }
 
+ServerManagedSettings ConfigFile::serverManagedSettings() const
+{
+    return ManagedConfig::instance().serverSettings(configFile());
+}
+
+void ConfigFile::setServerManagedSettings(const ServerManagedSettings &settings)
+{
+    // Sanitize on the way in so the cache can never hold a key the server may not set.
+    ManagedConfig::instance().setServerSettings(configFile(), sanitizeServerManagedSettings(settings));
+}
+
 QString ConfigFile::language() const
 {
     QSettings settings(configFile(), QSettings::IniFormat);
@@ -1380,20 +1501,6 @@ void ConfigFile::setupDefaultExcludeFilePaths(ExcludedFiles &excludedFiles)
     excludedFiles.addExcludeFilePath(userList);
 }
 
-QString ConfigFile::discoveredLegacyConfigPath()
-{
-    return _discoveredLegacyConfigPath;
-}
-
-void ConfigFile::setDiscoveredLegacyConfigPath(const QString &discoveredLegacyConfigPath)
-{
-    if (_discoveredLegacyConfigPath == discoveredLegacyConfigPath) {
-        return;
-    }
-
-    _discoveredLegacyConfigPath = discoveredLegacyConfigPath;
-}
-
 void ConfigFile::removeFileProviderDomainMapping()
 {
     QSettings settings(configFile(), QSettings::IniFormat);
@@ -1416,6 +1523,10 @@ void ConfigFile::setFileProviderDomainsAppSandboxMigrationCompleted(const bool c
 
 bool ConfigFile::macFileProviderModeEnabled() const
 {
+    // The File Provider is the macOS virtual files implementation, so an enforced mode of off turns it off too.
+    if (const auto managedVfs = managedVirtualFilesMode(); managedVfs.isEnforced && !managedVfs.enabled) {
+        return false;
+    }
     QSettings settings(configFile(), QSettings::IniFormat);
     return settings.value(macFileProviderModeEnabledC, false).toBool();
 }
@@ -1433,60 +1544,47 @@ void ConfigFile::setMacFileProviderModeEnabled(const bool enabled)
     settings.sync();
 }
 
-bool ConfigFile::isUpgrade() const
+bool ConfigFile::fileProviderVfsEnforcedOffNotified() const
 {
-    const auto currentVersion = QVersionNumber::fromString(MIRALL_VERSION_STRING);
-    const auto previousVersion = QVersionNumber::fromString(clientPreviousVersionString());
-    return currentVersion > previousVersion;
+    QSettings settings(configFile(), QSettings::IniFormat);
+    return settings.value(fileProviderVfsEnforcedOffNotifiedC, false).toBool();
 }
 
-bool ConfigFile::isDowngrade() const
+void ConfigFile::setFileProviderVfsEnforcedOffNotified(const bool notified)
 {
-    const auto currentVersion = QVersionNumber::fromString(MIRALL_VERSION_STRING);
-    const auto previousVersion = QVersionNumber::fromString(clientPreviousVersionString());
-    return previousVersion > currentVersion;
+    QSettings settings(configFile(), QSettings::IniFormat);
+    settings.setValue(fileProviderVfsEnforcedOffNotifiedC, notified);
+    settings.sync();
 }
 
-bool ConfigFile::shouldTryUnbrandedToBrandedMigration() const
+void ConfigFile::applyMigrationDefaults()
 {
-    return migrationPhase() == ConfigFile::MigrationPhase::SetupFolders
-        && Theme::instance()->appName() != unbrandedAppName
-        && !discoveredLegacyConfigPath().isEmpty();
+    const auto theme = Theme::instance();
+    // Launch on system startup defaults to true after 3.11.x.
+    setLaunchOnSystemStartup(launchOnSystemStartup());
+    Utility::setLaunchOnStartup(theme->appName(), theme->appNameGUI(), launchOnSystemStartup());
+    // Do not warn about deleting many files by default.
+    setPromptDeleteFiles(false);
 }
 
-bool ConfigFile::isUnbrandedToBrandedMigrationInProgress() const
+QStringList ConfigFile::backupConfigFiles()
 {
-    return isMigrationInProgress() && Theme::instance()->appName() != unbrandedAppName;
-}
-
-bool ConfigFile::shouldTryToMigrate() const
-{
-    return hasVersionChanged() && (isUpgrade() || isDowngrade());
-}
-
-bool ConfigFile::hasVersionChanged() const
-{
-    const auto currentVersion = QVersionNumber::fromString(MIRALL_VERSION_STRING); //app running
-    const auto clientConfigVersion = QVersionNumber::fromString(clientVersionString()); //config version
-    return clientConfigVersion != currentVersion;
-}
-
-bool ConfigFile::isMigrationInProgress() const
-{
-    return _migrationPhase != MigrationPhase::NotStarted && _migrationPhase != MigrationPhase::Done;
-}
-
-void ConfigFile::setMigrationPhase(const MigrationPhase phase)
-{
-    // do not rollback
-    if (phase > _migrationPhase) {
-        _migrationPhase = phase;
+    QStringList backupFilesList;
+    QDir configDir(configPath());
+    const auto anyConfigFileNameList = configDir.entryInfoList({"*.cfg"}, QDir::Files);
+    for (const auto &oldConfig : anyConfigFileNameList) {
+        const auto oldConfigFilePath = oldConfig.filePath();
+        const auto newConfigFilePath = configFile();
+        backupFilesList.append(backup(oldConfig.fileName()));
+        if (oldConfigFilePath == newConfigFilePath || QFileInfo::exists(newConfigFilePath)) {
+            continue;
+        }
+        if (!QFile::rename(oldConfigFilePath, newConfigFilePath)) {
+            qCWarning(lcConfigFile) << "Failed to rename configuration file from" << oldConfigFilePath << "to" << newConfigFilePath;
+        }
     }
-}
 
-ConfigFile::MigrationPhase ConfigFile::migrationPhase() const
-{
-    return _migrationPhase;
+    return backupFilesList;
 }
 
 }
