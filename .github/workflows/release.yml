@@ -258,7 +258,7 @@ jobs:
 
   macos:
     name: macOS
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       # Developer ID identities for direct-download distribution (not the
       # Mac App Store identities a submission there would require).
