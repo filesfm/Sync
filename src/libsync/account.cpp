@@ -1337,11 +1337,6 @@ void Account::listRemoteFolder(QPromise<OCC::PlaceholderCreateInfo> *promise, co
             newEntry.size = 0;
         }
 
-        if (!newEntry.remotePerm.isNull() && !newEntry.remotePerm.hasPermission(RemotePermissions::CanRead)) {
-            qCWarning(lcAccount()) << "skip non-readable item" << absoluteItemPathName;
-            return;
-        }
-
         promise->emplaceResult(itemFileName, itemFileName.toStdWString(), absoluteItemPathName, newEntry);
     });
 
