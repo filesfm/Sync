@@ -154,7 +154,8 @@ jobs:
             -DBUILD_TESTING=OFF \
             -DBUILD_UPDATER=ON \
             -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
-            -DMIRALL_VERSION_SUFFIX=""
+            -DMIRALL_VERSION_SUFFIX="" \
+            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
           cmake --build "$GITHUB_WORKSPACE/build" --parallel "$(nproc)"
           DESTDIR="$RUNNER_TEMP/appimage-root" cmake --install "$GITHUB_WORKSPACE/build"
 
@@ -370,7 +371,8 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DSOCKETAPI_TEAM_IDENTIFIER_PREFIX="$TEAM_IDENTIFIER_PREFIX" \
             -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
-            -DMIRALL_VERSION_SUFFIX=""
+            -DMIRALL_VERSION_SUFFIX="" \
+            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
           cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
 
           chmod +x "$BUILD_DIR/admin/osx/pre_install.sh"
@@ -719,7 +721,8 @@ jobs:
             -DECM_FIND_MODULE_DIR="$env:DEPS_PREFIX\share\ECM\find-modules" `
             -DIcoTool_EXECUTABLE="C:\msys64\mingw64\bin\icotool.exe" `
             -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_NUMBER" `
-            -DMIRALL_VERSION_SUFFIX=""
+            -DMIRALL_VERSION_SUFFIX="" `
+            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           cmake --build "$env:GITHUB_WORKSPACE\build" --parallel $env:NUMBER_OF_PROCESSORS
