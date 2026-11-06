@@ -14,10 +14,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         build_type: [Debug, Release]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             qt_arch: linux_gcc_64
             qt_version: '6.9.0'
             ccache_variant: ccache
@@ -44,7 +44,7 @@ jobs:
         uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
 
       - name: Install Linux build/runtime dependencies
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -151,9 +151,9 @@ jobs:
           git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
           cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+            -DCMAKE_INSTALL_PREFIX="${{ matrix.os == 'ubuntu-24.04' && '/usr/local' || '$DEPS_PREFIX' }}"
           cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             sudo cmake --install "$RUNNER_TEMP/ecm-build"
           else
             cmake --install "$RUNNER_TEMP/ecm-build"
@@ -163,7 +163,7 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 --branch v6.29.0 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
-          prefix="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+          prefix="${{ matrix.os == 'ubuntu-24.04' && '/usr/local' || '$DEPS_PREFIX' }}"
           cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_WITH_QT6=ON \
@@ -171,7 +171,7 @@ jobs:
             -DCMAKE_PREFIX_PATH="$DEPS_PREFIX;$VCPKG_INSTALLED;$QT_ROOT_DIR" \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             sudo cmake --install "$RUNNER_TEMP/karchive-build"
           else
             cmake --install "$RUNNER_TEMP/karchive-build"
@@ -181,21 +181,21 @@ jobs:
         shell: bash
         run: |
           git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
-          prefix="${{ matrix.os == 'ubuntu-latest' && '/usr/local' || '$DEPS_PREFIX' }}"
+          prefix="${{ matrix.os == 'ubuntu-24.04' && '/usr/local' || '$DEPS_PREFIX' }}"
           cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_WITH_QT6=ON \
             -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DCMAKE_INSTALL_PREFIX="$prefix"
           cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ]; then
+          if [ "${{ matrix.os }}" = "ubuntu-24.04" ]; then
             sudo cmake --install "$RUNNER_TEMP/qtkeychain-build"
           else
             cmake --install "$RUNNER_TEMP/qtkeychain-build"
           fi
 
       - name: Refresh dynamic linker cache
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-24.04'
         run: sudo ldconfig
 
       - name: ccache
@@ -234,7 +234,7 @@ jobs:
         run: cmake --build build/${{ matrix.build_type }} --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "$NUMBER_OF_PROCESSORS")"
 
       - name: Run qmllint
-        if: matrix.os == 'ubuntu-latest' && matrix.build_type == 'Release'
+        if: matrix.os == 'ubuntu-24.04' && matrix.build_type == 'Release'
         shell: bash
         run: find src/gui -name '*.qml' -print0 | xargs -0 -r qmllint -I build/${{ matrix.build_type }}/src
 
@@ -255,7 +255,7 @@ jobs:
     name: Sanitizers
     needs: lint
     if: false
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -359,7 +359,7 @@ jobs:
 
   sonarcloud:
     name: SonarCloud
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
