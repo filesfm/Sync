@@ -296,14 +296,19 @@ jobs:
           brew install --cask packages
           # Sparkle auto-updater. find_package(Sparkle) is not REQUIRED, so
           # fail here rather than silently shipping a build without it.
-          brew install --cask sparkle
-
-          # The sparkle cask unpacks Sparkle.framework straight into its
-          # Caskroom version directory (no stable, version-independent
-          # symlink the way brew --prefix gives formulae), so the actual
-          # path has to be discovered rather than hardcoded.
-          # Skip Caskroom's .metadata directory, which can sort first.
-          SPARKLE_PREFIX="$(find "$(brew --prefix)/Caskroom/sparkle" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' | sort -V | tail -n1)"
+          #
+          # Homebrew's own `sparkle` cask is permanently disabled ("does not
+          # pass the macOS Gatekeeper check", since 2026-09-01), so fetch the
+          # official release archive directly instead -- it contains
+          # Sparkle.framework (and bin/sign_update) at its root.
+          SPARKLE_VERSION=2.10.1
+          SPARKLE_SHA256=1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+          SPARKLE_PREFIX="$RUNNER_TEMP/sparkle"
+          curl -sL -o "$RUNNER_TEMP/sparkle.tar.xz" \
+            "https://github.com/sparkle-project/Sparkle/releases/download/$SPARKLE_VERSION/Sparkle-$SPARKLE_VERSION.tar.xz"
+          echo "$SPARKLE_SHA256  $RUNNER_TEMP/sparkle.tar.xz" | shasum -a 256 -c -
+          mkdir -p "$SPARKLE_PREFIX"
+          tar xJf "$RUNNER_TEMP/sparkle.tar.xz" -C "$SPARKLE_PREFIX" ./Sparkle.framework
           test -d "$SPARKLE_PREFIX/Sparkle.framework"
           echo "SPARKLE_PREFIX=$SPARKLE_PREFIX" >> "$GITHUB_ENV"
 
