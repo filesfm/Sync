@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+env:
+  # Update check endpoint baked into every build. The client appends its own
+  # query (platform, version, msi/sparkle, ...) and replaces any query here.
+  UPDATE_URL: https://webdav.files.fm/ocs/v2.php/cloud/client_update
+
 jobs:
   appimage:
     name: AppImage
@@ -153,9 +158,9 @@ jobs:
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_TESTING=OFF \
             -DBUILD_UPDATER=ON \
-            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
-            -DMIRALL_VERSION_SUFFIX="" \
-            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
+            -DAPPLICATION_UPDATE_URL="$UPDATE_URL" \
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_NUMBER}" \
+            -DMIRALL_VERSION_SUFFIX=""
           cmake --build "$GITHUB_WORKSPACE/build" --parallel "$(nproc)"
           DESTDIR="$RUNNER_TEMP/appimage-root" cmake --install "$GITHUB_WORKSPACE/build"
 
@@ -289,16 +294,17 @@ jobs:
           # "Packages" (s.sudre.free.fr) provides packagesutil/packagesbuild,
           # used by admin/osx/create_mac.sh to build the signed .pkg.
           brew install --cask packages
-          # Optional: enables Sparkle auto-update support (BUILD_UPDATER
-          # defaults ON). find_package(Sparkle) is not REQUIRED, so a
-          # missing/failed install here does not fail the build.
-          brew install --cask sparkle || true
+          # Sparkle auto-updater. find_package(Sparkle) is not REQUIRED, so
+          # fail here rather than silently shipping a build without it.
+          brew install --cask sparkle
 
           # The sparkle cask unpacks Sparkle.framework straight into its
           # Caskroom version directory (no stable, version-independent
           # symlink the way brew --prefix gives formulae), so the actual
           # path has to be discovered rather than hardcoded.
-          SPARKLE_PREFIX="$(find "$(brew --prefix)/Caskroom/sparkle" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -n1)"
+          # Skip Caskroom's .metadata directory, which can sort first.
+          SPARKLE_PREFIX="$(find "$(brew --prefix)/Caskroom/sparkle" -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' | sort -V | tail -n1)"
+          test -d "$SPARKLE_PREFIX/Sparkle.framework"
           echo "SPARKLE_PREFIX=$SPARKLE_PREFIX" >> "$GITHUB_ENV"
 
       - name: Install Qt
@@ -366,13 +372,14 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$INSTALL_PREFIX" \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
+            -DBUILD_UPDATER=ON \
+            -DAPPLICATION_UPDATE_URL="$UPDATE_URL" \
             -DBUILD_OWNCLOUD_OSX_BUNDLE=ON \
             -DBUILD_FILE_PROVIDER_MODULE=0 \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DSOCKETAPI_TEAM_IDENTIFIER_PREFIX="$TEAM_IDENTIFIER_PREFIX" \
-            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_ID}" \
-            -DMIRALL_VERSION_SUFFIX="" \
-            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_NUMBER}" \
+            -DMIRALL_VERSION_SUFFIX=""
           cmake --build "$BUILD_DIR" --parallel "$(sysctl -n hw.ncpu)"
 
           chmod +x "$BUILD_DIR/admin/osx/pre_install.sh"
@@ -717,12 +724,13 @@ jobs:
             -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE\install" `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=OFF `
+            -DBUILD_UPDATER=ON `
+            -DAPPLICATION_UPDATE_URL="$env:UPDATE_URL" `
             -DBUILD_WIN_MSI=ON `
             -DECM_FIND_MODULE_DIR="$env:DEPS_PREFIX\share\ECM\find-modules" `
             -DIcoTool_EXECUTABLE="C:\msys64\mingw64\bin\icotool.exe" `
             -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_NUMBER" `
-            -DMIRALL_VERSION_SUFFIX="" `
-            -DAPPLICATION_UPDATE_URL="https://webdav.files.fm/ocs/v2.php/cloud/client_update"
+            -DMIRALL_VERSION_SUFFIX=""
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           cmake --build "$env:GITHUB_WORKSPACE\build" --parallel $env:NUMBER_OF_PROCESSORS
@@ -904,10 +912,14 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Publish GitHub Release
+      # Published as a pre-release; promote it to a full release on GitHub
+      # once it has been checked. Pre-releases are not "latest", so
+      # releases/latest keeps pointing at the previous full release.
+      - name: Publish GitHub pre-release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           files: dist/*
           fail_on_unmatched_files: true
+          prerelease: true

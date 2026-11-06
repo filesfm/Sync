@@ -38,10 +38,8 @@
         <false/>
         <key>SUShowReleaseNotes</key>
         <false/>
-        <key>SUPublicDSAKeyFile</key>
-        <string>dsa_pub.pem</string>
         <key>SUPublicEDKey</key>
-        <string>c3RcfDWDayvsYSZW8FhZN1UOJhvPVN30zleb4zOqbtU=</string>
+        <string>77RuRxX2jdf86SObRByZdsz/aOPGL1m+8tWyDYSjtrw=</string>
 
 <key>UTExportedTypeDeclarations</key>
 <array>
