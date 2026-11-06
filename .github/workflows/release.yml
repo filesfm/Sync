@@ -459,6 +459,50 @@ jobs:
 
           rm -f "$KEY_PATH"
 
+      # Sparkle update signature for the final (notarized + stapled -- stapling
+      # changes the bytes) dmg, published next to it as
+      # files_fm_sync-<version>.dmg.sparkle.json for the update server to copy
+      # into its appcast <enclosure>.
+      #
+      # Requires the repo secret SPARKLE_ED_PRIVATE_KEY: the base64 Ed25519
+      # private key (32-byte seed, or the 64-byte libsodium form) matching
+      # SUPublicEDKey in cmake/modules/MacOSXBundleInfo.plist.in.
+      - name: Sign dmg for Sparkle
+        env:
+          VERSION: ${{ github.ref_name }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SPARKLE_ED_PRIVATE_KEY" ]; then
+            echo "::error::SPARKLE_ED_PRIVATE_KEY secret is not set"
+            exit 1
+          fi
+          OPENSSL="$(brew --prefix openssl@3)/bin/openssl"
+          SHORT="${VERSION#v}"
+          DMG="$INSTALL_PREFIX/files_fm_sync-$SHORT.dmg"
+          APP="$INSTALL_PREFIX/Files.fm Sync 2027.app"
+          KEY_PEM="$RUNNER_TEMP/sparkle_ed.pem"
+          trap 'rm -f "$KEY_PEM" "$RUNNER_TEMP/sparkle.sig"' EXIT
+
+          # Wrap the 32-byte seed in a PKCS#8 header so OpenSSL can read it.
+          umask 077
+          { printf '302e020100300506032b657004220420' | xxd -r -p
+            printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | base64 -D | head -c 32
+          } | "$OPENSSL" pkey -inform DER -out "$KEY_PEM"
+
+          # Refuse to publish a signature the app can't verify.
+          EXPECTED_PUB="$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")"
+          ACTUAL_PUB="$("$OPENSSL" pkey -in "$KEY_PEM" -pubout -outform DER | tail -c 32 | base64)"
+          if [ "$EXPECTED_PUB" != "$ACTUAL_PUB" ]; then
+            echo "::error::SPARKLE_ED_PRIVATE_KEY does not match SUPublicEDKey ($EXPECTED_PUB)"
+            exit 1
+          fi
+
+          "$OPENSSL" pkeyutl -sign -inkey "$KEY_PEM" -rawin -in "$DMG" -out "$RUNNER_TEMP/sparkle.sig"
+          SIGNATURE="$(base64 < "$RUNNER_TEMP/sparkle.sig" | tr -d '\n')"
+
+          printf '{\n  "edSignature": "%s"\n}\n' "$SIGNATURE" > "$DMG.sparkle.json"
+          cat "$DMG.sparkle.json"
+
       - name: Remove signing keychain
         if: always()
         run: security delete-keychain "$KEYCHAIN_PATH" || true
@@ -470,6 +514,7 @@ jobs:
           path: |
             ${{ runner.temp }}/mac-install/*.pkg
             ${{ runner.temp }}/mac-install/*.dmg
+            ${{ runner.temp }}/mac-install/*.dmg.sparkle.json
           if-no-files-found: error
 
   windows:
