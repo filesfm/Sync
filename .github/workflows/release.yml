@@ -403,7 +403,10 @@ jobs:
           ./admin/osx/sign_app.sh "$INSTALL_PREFIX/Files.fm Sync 2027.app" \
             "$APP_SIGN_IDENTITY" "${TEAM_IDENTIFIER_PREFIX%.}"
 
+      # Temporarily disabled -- re-enable by dropping this `if:` together with
+      # the one on "Sign dmg for Sparkle" below.
       - name: Build disk image
+        if: false
         env:
           VERSION: ${{ github.ref_name }}
         run: |
@@ -443,6 +446,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          shopt -s nullglob
           for FILE in "$INSTALL_PREFIX"/*.pkg "$INSTALL_PREFIX"/*.dmg; do
             xcrun notarytool submit "$FILE" \
               --apple-id "$APPLE_ID" \
@@ -472,7 +476,9 @@ jobs:
       # Requires the repo secret SPARKLE_ED_PRIVATE_KEY: the base64 Ed25519
       # private key (32-byte seed, or the 64-byte libsodium form) matching
       # SUPublicEDKey in cmake/modules/MacOSXBundleInfo.plist.in.
+      # Temporarily disabled, paired with "Build disk image" above.
       - name: Sign dmg for Sparkle
+        if: false
         env:
           VERSION: ${{ github.ref_name }}
           SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}

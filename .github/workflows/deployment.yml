@@ -219,19 +219,19 @@ jobs:
     if: ${{ inputs.publish_homebrew }}
     runs-on: ubuntu-latest
     steps:
-      - name: Download macOS DMG from GitHub Release
+      - name: Download macOS pkg from GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p dist
           gh release download "${{ inputs.tag }}" \
             --repo "${{ github.repository }}" \
-            --pattern '*.dmg' \
+            --pattern '*.pkg' \
             --dir dist
 
-          count=$(find dist -maxdepth 1 -name '*.dmg' | wc -l)
+          count=$(find dist -maxdepth 1 -name '*.pkg' | wc -l)
           if [ "$count" -ne 1 ]; then
-            echo "::error::Expected exactly 1 .dmg asset on release ${{ inputs.tag }}, found $count"
+            echo "::error::Expected exactly 1 .pkg asset on release ${{ inputs.tag }}, found $count"
             exit 1
           fi
 
@@ -247,8 +247,8 @@ jobs:
           VERSION_TAG: ${{ inputs.tag }}
         run: |
           version="${VERSION_TAG#v}"
-          dmg=$(find dist -maxdepth 1 -name '*.dmg')
-          sha=$(sha256sum "$dmg" | cut -d' ' -f1)
+          pkg=$(find dist -maxdepth 1 -name '*.pkg')
+          sha=$(sha256sum "$pkg" | cut -d' ' -f1)
 
           cask=homebrew-macos/Casks/files-fm-sync.rb
           sed -i -E \
