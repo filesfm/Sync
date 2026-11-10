@@ -5,6 +5,7 @@ add_library(filesfm OBJECT
     messaging.cpp
     lockwatcher.cpp
     filehandles.cpp
+    loguploader.cpp
 )
 
 set_target_properties(filesfm PROPERTIES

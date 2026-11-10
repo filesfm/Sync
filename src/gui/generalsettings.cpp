@@ -40,6 +40,8 @@
 #include "ignorelisteditor.h"
 #include "common/utility.h"
 #include "logger.h"
+#include "creds/abstractcredentials.h"
+#include "filesfm/loguploader.h"
 
 #include "legalnotice.h"
 
@@ -179,6 +181,25 @@ bool createDebugArchive(const QString &filename)
     return true;
 }
 
+QStringList collectLogFilePaths()
+{
+    auto list = QStringList();
+
+    const auto logger = OCC::Logger::instance();
+
+    if (!logger->logDir().isEmpty()) {
+        QDir dir(logger->logDir());
+        const auto infoList = dir.entryInfoList(QDir::Files);
+        std::transform(std::cbegin(infoList), std::cend(infoList),
+                       std::back_inserter(list),
+                       [](const QFileInfo &info) { return info.absoluteFilePath(); });
+    } else if (!logger->logFile().isEmpty()) {
+        list.append(logger->logFile());
+    }
+
+    return list;
+}
+
 }
 
 namespace OCC {
@@ -276,6 +297,7 @@ GeneralSettings::GeneralSettings(QWidget *parent)
 
     connect(_ui->ignoredFilesButton, &QAbstractButton::clicked, this, &GeneralSettings::slotIgnoreFilesEditor);
     connect(_ui->debugArchiveButton, &QAbstractButton::clicked, this, &GeneralSettings::slotCreateDebugArchive);
+    connect(_ui->uploadLogsButton, &QAbstractButton::clicked, this, &GeneralSettings::slotUploadLogs);
 
     // accountAdded means the wizard was finished and the wizard might change some options.
     connect(AccountManager::instance(), &AccountManager::accountAdded, this, &GeneralSettings::loadMiscSettings);
@@ -623,6 +645,48 @@ void GeneralSettings::slotCreateDebugArchive()
             tr("Debug archive is created at %1").arg(filename)
         );
     }
+}
+
+void GeneralSettings::slotUploadLogs()
+{
+    const auto accounts = AccountManager::instance()->accounts();
+    if (accounts.isEmpty()) {
+        QMessageBox::critical(this, tr("Failed to upload logs"), tr("No account is configured; cannot upload logs."));
+        return;
+    }
+    const auto credentials = accounts.first()->account()->credentials();
+    const auto user = credentials->user();
+    const auto pass = credentials->password();
+
+    const auto filePaths = collectLogFilePaths();
+    if (filePaths.isEmpty()) {
+        QMessageBox::critical(this, tr("Failed to upload logs"), tr("No log files were found to upload!"));
+        return;
+    }
+
+    if (!_logUploader) {
+        _logUploader = new LogUploader(this);
+        connect(_logUploader, &LogUploader::fileUploadStarted, this, [this](int index, int total, const QString &fileName) {
+            _ui->uploadLogsButton->setText(tr("Uploading %1/%2…").arg(index).arg(total));
+            _ui->uploadLogsButton->setToolTip(fileName);
+        });
+        connect(_logUploader, &LogUploader::uploadFinished, this, [this](bool success, const QString &message) {
+            _ui->uploadLogsButton->setEnabled(true);
+            _ui->uploadLogsButton->setText(tr("Upload Logs"));
+            _ui->uploadLogsButton->setToolTip(QString());
+
+            if (success) {
+                QMessageBox::information(this, tr("Logs Uploaded"), message);
+            } else {
+                QMessageBox::critical(this, tr("Failed to upload logs"), message);
+            }
+        });
+    }
+
+    _ui->uploadLogsButton->setEnabled(false);
+    _ui->uploadLogsButton->setText(tr("Uploading..."));
+
+    _logUploader->uploadLogFiles(filePaths, user, pass);
 }
 
 void GeneralSettings::slotShowLegalNotice()

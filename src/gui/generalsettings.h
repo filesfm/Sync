@@ -20,6 +20,8 @@
 #include <QWidget>
 #include <QPointer>
 
+class LogUploader;
+
 namespace OCC {
 class IgnoreListEditor;
 class SyncLogDialog;
@@ -57,6 +59,7 @@ private slots:
     void slotShowInExplorerNavigationPane(bool);
     void slotIgnoreFilesEditor();
     void slotCreateDebugArchive();
+    void slotUploadLogs();
     void loadMiscSettings();
     void slotShowLegalNotice();
     void slotRemotePollIntervalChanged(int seconds);
@@ -75,6 +78,7 @@ private:
     QPointer<IgnoreListEditor> _ignoreEditor;
     bool _currentlyLoading = false;
     QStringList _currentUpdateChannelList;
+    LogUploader *_logUploader = nullptr;
 };
 
 
