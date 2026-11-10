@@ -40,7 +40,6 @@
 #include <QQuickWindow>
 #include <QSurfaceFormat>
 #include <QOperatingSystemVersion>
-#include <QFont>
 
 using namespace OCC;
 
@@ -99,22 +98,8 @@ int main(int argc, char **argv)
 #endif
 
     QQuickStyle::setStyle(qmlStyle);
-    QQuickStyle::setFallbackStyle(QStringLiteral("Fusion"));
-
-    QGuiApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     OCC::Application app(argc, argv);
-
-    // Set system font for the entire application
-    QFont systemFont = app.font();
-    systemFont.setHintingPreference(QFont::PreferFullHinting);
-    
-#ifdef Q_OS_WIN
-    // On Windows, explicitly set to Segoe UI for better rendering
-    systemFont.setFamily("Segoe UI");
-#endif
-    
-    app.setFont(systemFont);
 
     if (!widgetsStyle.isEmpty()) {
         QApplication::setStyle(QStyleFactory::create(widgetsStyle));

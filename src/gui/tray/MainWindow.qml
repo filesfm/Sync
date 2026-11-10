@@ -44,7 +44,6 @@ ApplicationWindow {
     // Set font to use system default
     font.family: Qt.application.font.family
     font.pixelSize: Qt.application.font.pixelSize
-    font.hintingPreference: Font.PreferFullHinting
 
     readonly property int maxMenuHeight: Style.trayWindowHeight - Style.trayWindowHeaderHeight - 2 * Style.trayWindowBorderWidth
 
