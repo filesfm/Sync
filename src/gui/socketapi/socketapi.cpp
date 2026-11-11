@@ -47,6 +47,7 @@
 #include <array>
 #include <QBitArray>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QMetaMethod>
 #include <QMetaObject>
 #include <QStringList>
@@ -940,10 +941,15 @@ void SocketApi::fetchPrivateLinkUrlHelper(const QString &localFile, const std::f
 QUrl SocketApi::createLink(const QString &localFile, const QString command)
 {
     auto fileData = FileData::get(localFile);
-    QString account = fileData.folder->accountState()->account()->credentials()->user();
-    const QString link = QStringLiteral("https://api.files.fm/server_scripts/filesfm_sync_contextmenu_action.php?username=%1&action=%2&path=%3")
-        .arg(account, command, fileData.serverRelativePath);
-    return QUrl(link);
+    const QString account = fileData.folder->accountState()->account()->credentials()->user();
+
+    QUrl link(QStringLiteral("https://api.files.fm/server_scripts/filesfm_sync_contextmenu_action.php"));
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("username"), account);
+    query.addQueryItem(QStringLiteral("action"), command);
+    query.addQueryItem(QStringLiteral("path"), fileData.serverRelativePath);
+    link.setQuery(query);
+    return link;
 }
 
 void SocketApi::command_COPY_PRIVATE_LINK(const QString &localFile, SocketListener *)
