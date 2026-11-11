@@ -29,6 +29,7 @@ enum CSYNC_EXCLUDE_TYPE {
   CSYNC_FILE_EXCLUDE_INVALID_CHAR,
   CSYNC_FILE_EXCLUDE_TRAILING_SPACE,
   CSYNC_FILE_EXCLUDE_LONG_FILENAME,
+  CSYNC_FILE_EXCLUDE_LONG_PATH,
   CSYNC_FILE_EXCLUDE_HIDDEN,
   CSYNC_FILE_EXCLUDE_STAT_FAILED,
   CSYNC_FILE_EXCLUDE_CONFLICT,
@@ -198,6 +199,14 @@ private:
      * or directory pointed to is hidden (or whether it even exists).
      */
     [[nodiscard]] CSYNC_EXCLUDE_TYPE fullPatternMatch(const QString &path, ItemType filetype) const;
+
+    /**
+     * @brief Check whether the full local path (sync root + path) would exceed
+     * Windows' MAX_PATH limit.
+     *
+     * @param Path is folder-relative, should not start with a /.
+     */
+    [[nodiscard]] CSYNC_EXCLUDE_TYPE checkPathLength(const QString &path) const;
 
     // Our BasePath need to end with '/'
     class BasePathString : public QString

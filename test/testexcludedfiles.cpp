@@ -221,6 +221,12 @@ private Q_SLOTS:
         QCOMPARE(check_file_full("AUX"), CSYNC_FILE_SILENTLY_EXCLUDED);
         QCOMPARE(check_file_full("file_invalid_char<"), CSYNC_FILE_EXCLUDE_INVALID_CHAR);
         QCOMPARE(check_file_full("file_invalid_char\n"), CSYNC_FILE_EXCLUDE_INVALID_CHAR);
+
+        /* full path length exceeding Windows' MAX_PATH, even though no single component is too long */
+        const QByteArray veryLongPath(300, 'a');
+        QCOMPARE(check_file_full(veryLongPath.constData()), CSYNC_FILE_EXCLUDE_LONG_PATH);
+        const QByteArray shortPath(50, 'a');
+        QCOMPARE(check_file_full(shortPath.constData()), CSYNC_NOT_EXCLUDED);
     #endif
 
         /* ? character */

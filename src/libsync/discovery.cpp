@@ -454,6 +454,10 @@ bool ProcessDirectoryJob::handleExcluded(const QString &path, const Entries &ent
             item->_errorString = tr("Filename is too long.");
             item->_status = SyncFileItem::FileNameInvalid;
             break;
+        case CSYNC_FILE_EXCLUDE_LONG_PATH:
+            item->_errorString = tr("The full file path is too long for Windows to handle (limit: 260 characters). Move this folder closer to your sync root, or shorten folder/file names.");
+            item->_status = SyncFileItem::FileNameInvalid;
+            break;
         case CSYNC_FILE_EXCLUDE_HIDDEN:
             item->_errorString = tr("File/Folder is ignored because it's hidden.");
             break;
@@ -2541,6 +2545,7 @@ bool ProcessDirectoryJob::maybeRenameForWindowsCompatibility(const QString &abso
     case CSYNC_FILE_SILENTLY_EXCLUDED:
     case CSYNC_FILE_EXCLUDE_STAT_FAILED:
     case CSYNC_FILE_EXCLUDE_LONG_FILENAME:
+    case CSYNC_FILE_EXCLUDE_LONG_PATH:
     case CSYNC_FILE_EXCLUDE_LIST:
     case CSYNC_FILE_EXCLUDE_CONFLICT:
         break;

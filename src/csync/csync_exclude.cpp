@@ -457,6 +457,10 @@ CSYNC_EXCLUDE_TYPE ExcludedFiles::traversalPatternMatch(const QString &path, Ite
     if (match != CSYNC_NOT_EXCLUDED) {
         return match;
     }
+    match = checkPathLength(path);
+    if (match != CSYNC_NOT_EXCLUDED) {
+        return match;
+    }
     if (_allExcludes.isEmpty()) {
         return CSYNC_NOT_EXCLUDED;
     }
@@ -539,6 +543,10 @@ CSYNC_EXCLUDE_TYPE ExcludedFiles::fullPatternMatch(const QString &p, ItemType fi
     if (match != CSYNC_NOT_EXCLUDED) {
         return match;
     }
+    match = checkPathLength(p);
+    if (match != CSYNC_NOT_EXCLUDED) {
+        return match;
+    }
     if (_allExcludes.isEmpty()) {
         return CSYNC_NOT_EXCLUDED;
     }
@@ -573,6 +581,23 @@ CSYNC_EXCLUDE_TYPE ExcludedFiles::fullPatternMatch(const QString &p, ItemType fi
         }
     }
 
+    return CSYNC_NOT_EXCLUDED;
+}
+
+CSYNC_EXCLUDE_TYPE ExcludedFiles::checkPathLength(const QString &path) const
+{
+#ifdef _WIN32
+    // Windows cannot reliably access a full path longer than MAX_PATH (260 characters,
+    // including the drive letter, separators and the terminating null) unless long-path
+    // support has been explicitly enabled. Warn proactively instead of letting the file
+    // silently fail to hydrate/open, which otherwise looks like file corruption.
+    constexpr qsizetype windowsMaxPath = 260;
+    if (_localPath.size() + path.size() >= windowsMaxPath) {
+        return CSYNC_FILE_EXCLUDE_LONG_PATH;
+    }
+#else
+    Q_UNUSED(path)
+#endif
     return CSYNC_NOT_EXCLUDED;
 }
 
