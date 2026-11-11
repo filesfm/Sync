@@ -19,7 +19,9 @@
 #include <libsync/vfs/cfapi/shellext/configvfscfapishellext.h>
 #include "folder.h"
 #include "folderman.h"
+#include <QBuffer>
 #include <QDir>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -245,6 +247,32 @@ void ShellExtensionsServer::processThumbnailRequest(QLocalSocket *socket, const 
     if (!folder->journalDb()->getFileRecord(filePathRelative, &record) || !record.isValid()) {
         sendEmptyDataAndCloseSession(socket);
         return;
+    }
+
+    if (!record.isVirtualFile()) {
+        // The file is already fully available locally: read and scale its thumbnail
+        // directly from disk instead of asking the server. This avoids pointless
+        // network requests (and the server possibly not supporting previews at all,
+        // which would otherwise make Explorer replace a perfectly good thumbnail
+        // with the generic icon).
+        const QImage image(thumbnailRequestInfo.path);
+        if (!image.isNull()) {
+            const auto scaled = image.scaled(thumbnailRequestInfo.size, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            QByteArray imageBytes;
+            QBuffer buffer(&imageBytes);
+            buffer.open(QIODevice::WriteOnly);
+            scaled.save(&buffer, "PNG");
+            buffer.close();
+
+            auto messageReplyWithThumbnail = QVariantMap {
+                {VfsShellExtensions::Protocol::ThumnailProviderDataKey, imageBytes.toBase64()}
+            };
+            sendJsonMessageWithVersion(socket, messageReplyWithThumbnail);
+            closeSession(socket);
+            return;
+        }
+        // Not a raster image format Qt can decode locally (e.g. PDF, video, document):
+        // fall through to requesting a preview from the server, as before.
     }
 
     QUrlQuery queryItems;
