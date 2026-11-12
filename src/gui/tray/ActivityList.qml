@@ -10,6 +10,7 @@ ScrollView {
     property alias count: activityList.count
     property alias atYBeginning : activityList.atYBeginning
     property bool isFileActivityList: false
+    property bool initialSyncInProgress: false
     property int iconSize: Style.trayListItemIconSize
     property int delegateHorizontalPadding: 0
 
@@ -149,7 +150,9 @@ ScrollView {
 
             EnforcedPlainTextLabel {
                width: parent.width
-               text: qsTr("No activities yet")
+               text: controlRoot.initialSyncInProgress
+                     ? qsTr("Setting up your account: fetching your server file list and creating local placeholder files. No file content is downloaded yet.")
+                     : qsTr("No activities yet")
                font.bold: true
                wrapMode: Text.Wrap
                horizontalAlignment: Text.AlignHCenter

@@ -14,4 +14,5 @@ QtObject {
     readonly property int totalFiles: 0
     readonly property real syncProgress: 0
     readonly property bool needsSandboxReapproval: false
+    readonly property bool initialSyncInProgress: false
 }

@@ -199,6 +199,9 @@ public:
     /** True if the folder is currently synchronizing */
     [[nodiscard]] bool isSyncRunning() const;
 
+    /** True if the sync currently running (if any) is this folder's first sync */
+    [[nodiscard]] bool isInitialSync() const { return _isInitialSync; }
+
     /**
      * return the last sync result with error message and status
      */
@@ -558,6 +561,7 @@ private:
      * disabled or different.
      */
     bool _vfsOnOffPending = false;
+    bool _isInitialSync = false;
 
     /** Whether this folder has just switched to VFS or not
      */

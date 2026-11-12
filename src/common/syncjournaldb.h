@@ -389,6 +389,11 @@ public:
      */
     PinStateInterface internalPinStates();
 
+    /** True if this folder's local metadata table had no records when the
+     *  db connection was (re-)established, i.e. no sync has completed/progressed
+     *  yet. Used to detect an in-progress initial sync. */
+    [[nodiscard]] bool isMetadataTableEmpty();
+
     /**
      * Only used for auto-test:
      * when positive, will decrease the counter for every database operation.

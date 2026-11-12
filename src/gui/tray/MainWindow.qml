@@ -491,6 +491,7 @@ ApplicationWindow {
             anchors.bottom: trayWindowMainItem.bottom
 
             activeFocusOnTab: true
+            initialSyncInProgress: syncStatus.model.initialSyncInProgress
             model: activityModel
             onOpenFile: Qt.openUrlExternally(filePath);
             onActivityItemClicked: {

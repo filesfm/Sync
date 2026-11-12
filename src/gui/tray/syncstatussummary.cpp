@@ -156,7 +156,9 @@ void SyncStatusSummary::setSyncStateForFolder(const Folder *folder)
     case SyncResult::SyncRunning:
     case SyncResult::NotYetStarted:
         setSyncing(true);
-        if (totalFiles() <= 0) {
+        if (_initialSyncInProgress) {
+            setSyncStatusString(tr("Getting your server file list..."));
+        } else if (totalFiles() <= 0) {
             setSyncStatusString(tr("Checking folder changes"));
         } else {
             setSyncStatusString(tr("Syncing changes"));
@@ -194,6 +196,7 @@ void SyncStatusSummary::onFolderSyncStateChanged(const Folder *folder)
         return;
     }
 
+    setInitialSyncInProgress(computeInitialSyncInProgress());
     setSyncStateForFolder(folder);
 }
 
@@ -217,7 +220,7 @@ void SyncStatusSummary::onFolderProgressInfo(const ProgressInfo &progress)
     const qint64 totalSize = qMax(completedSize, progress.totalSize());
     const qint64 numFilesInProgress = qMax(currentFile, progress.totalFiles());
 
-    if (_totalFiles <= 0 && numFilesInProgress > 0) {
+    if (_totalFiles <= 0 && numFilesInProgress > 0 && !_initialSyncInProgress) {
         setSyncStatusString(tr("Syncing"));
     }
 
@@ -239,7 +242,11 @@ void SyncStatusSummary::onFolderProgressInfo(const ProgressInfo &progress)
         }
     }
 
-    if (numFilesInProgress > 0) {
+    if (_initialSyncInProgress && progress.status() == ProgressInfo::Discovery) {
+        setSyncStatusString(tr("Getting your server file list..."));
+    } else if (_initialSyncInProgress && progress.status() == ProgressInfo::Propagation) {
+        setSyncStatusString(tr("Creating local virtual files..."));
+    } else if (numFilesInProgress > 0) {
         setSyncStatusString(tr("Syncing file %1 of %2").arg(currentFile).arg(numFilesInProgress));
     }
 }
@@ -260,6 +267,35 @@ void SyncStatusSummary::setTotalFiles(const qint64 value)
         _totalFiles = value;
         emit totalFilesChanged();
     }
+}
+
+bool SyncStatusSummary::initialSyncInProgress() const
+{
+    return _initialSyncInProgress;
+}
+
+void SyncStatusSummary::setInitialSyncInProgress(bool value)
+{
+    if (value != _initialSyncInProgress) {
+        _initialSyncInProgress = value;
+        emit initialSyncInProgressChanged();
+    }
+}
+
+bool SyncStatusSummary::computeInitialSyncInProgress() const
+{
+    if (!_accountState) {
+        return false;
+    }
+
+    for (const auto &folder : FolderMan::instance()->map()) {
+        if (folder->accountState() == _accountState.data()
+            && folder->isSyncRunning() && folder->virtualFilesEnabled() && folder->isInitialSync()) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 void SyncStatusSummary::setSyncProgress(double value)

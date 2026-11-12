@@ -1748,6 +1748,14 @@ int SyncJournalDb::getFileRecordCount()
     return -1;
 }
 
+bool SyncJournalDb::isMetadataTableEmpty()
+{
+    if (!checkConnect()) {
+        return true; // no usable db yet => nothing has ever synced
+    }
+    return _metadataTableIsEmpty;
+}
+
 bool SyncJournalDb::ensureCorrectEncryptionStatus()
 {
     qCInfo(lcDb) << "migration: ensure proper encryption status in database";

@@ -1186,6 +1186,7 @@ void Folder::startSync(const QStringList &pathList)
     }
 
     _timeSinceLastSyncStart.start();
+    _isInitialSync = _journal.isMetadataTableEmpty();
     _syncResult.setStatus(SyncResult::SyncPrepare);
     emit syncStateChange();
 
