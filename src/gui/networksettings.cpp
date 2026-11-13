@@ -220,8 +220,9 @@ void NetworkSettings::saveProxySettings()
     if (_account) { // We must be setting up network proxy for a specific account
         const auto proxySetting = useGlobalProxy ? Account::AccountNetworkProxySetting::GlobalProxy : Account::AccountNetworkProxySetting::AccountSpecificProxy;
         _account->setProxySettings(proxySetting, proxyType, host, port, needsAuth, user, password);
-        const auto accountState = AccountManager::instance()->accountFromUserId(_account->userIdAtHostWithPort());
-        accountState->freshConnectionAttempt();
+        if (const auto accountState = AccountManager::instance()->accountFromUserId(_account->userIdAtHostWithPort())) {
+            accountState->freshConnectionAttempt();
+        }
         AccountManager::instance()->saveAccount(_account);
     } else {
         ConfigFile().setProxyType(proxyType, host, port, needsAuth, user, password);
