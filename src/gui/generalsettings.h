@@ -46,9 +46,6 @@ public:
 
 public slots:
     void slotStyleChanged();
-#if defined(BUILD_UPDATER)
-    void loadUpdateChannelsList();
-#endif
 
 private slots:
     void saveMiscSettings();
@@ -64,7 +61,6 @@ private slots:
     void updatePollIntervalVisibility();
 #if defined(BUILD_UPDATER)
     void slotUpdateInfo();
-    void slotUpdateChannelChanged();
     void slotUpdateCheckNow();
     void slotToggleAutoUpdateCheck();
 #endif
@@ -75,7 +71,6 @@ private:
     Ui::GeneralSettings *_ui;
     QPointer<IgnoreListEditor> _ignoreEditor;
     bool _currentlyLoading = false;
-    QStringList _currentUpdateChannelList;
     LogUploader *_logUploader = nullptr;
 };
 

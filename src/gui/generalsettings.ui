@@ -341,29 +341,6 @@
          <item>
           <layout class="QHBoxLayout" name="updatesLayout_1">
            <item>
-            <widget class="QLabel" name="updateChannelLabel">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Maximum" vsizetype="Preferred">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-             <property name="text">
-              <string>Update channel</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QComboBox" name="updateChannel">
-             <property name="sizePolicy">
-              <sizepolicy hsizetype="Maximum" vsizetype="Fixed">
-               <horstretch>0</horstretch>
-               <verstretch>0</verstretch>
-              </sizepolicy>
-             </property>
-            </widget>
-           </item>
-           <item>
             <widget class="QLabel" name="updateStateLabel">
              <property name="text">
               <string/>

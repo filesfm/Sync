@@ -290,10 +290,6 @@ GeneralSettings::GeneralSettings(QWidget *parent)
     // accountAdded means the wizard was finished and the wizard might change some options.
     connect(AccountManager::instance(), &AccountManager::accountAdded, this, &GeneralSettings::loadMiscSettings);
 
-#if defined(BUILD_UPDATER)
-    loadUpdateChannelsList();
-#endif
-
     customizeStyle();
 }
 
@@ -341,25 +337,6 @@ void GeneralSettings::loadMiscSettings()
 }
 
 #if defined(BUILD_UPDATER)
-void GeneralSettings::loadUpdateChannelsList() {
-    ConfigFile cfgFile;
-    if (cfgFile.serverHasValidSubscription()) {
-        _ui->updateChannel->hide();
-        _ui->updateChannelLabel->hide();
-        return;
-    }
-
-    const auto validUpdateChannels = cfgFile.validUpdateChannels();
-    if (_currentUpdateChannelList.isEmpty() || _currentUpdateChannelList != validUpdateChannels){
-        _currentUpdateChannelList = validUpdateChannels;
-        _ui->updateChannel->clear();
-        _ui->updateChannel->addItems(_currentUpdateChannelList);
-        const auto currentUpdateChannelIndex = _currentUpdateChannelList.indexOf(cfgFile.currentUpdateChannel());
-        _ui->updateChannel->setCurrentIndex(currentUpdateChannelIndex != -1 ? currentUpdateChannelIndex : 0);
-        connect(_ui->updateChannel, &QComboBox::currentTextChanged, this, &GeneralSettings::slotUpdateChannelChanged);
-    }
-}
-
 void GeneralSettings::slotUpdateInfo()
 {
     ConfigFile config;
@@ -412,92 +389,6 @@ void GeneralSettings::slotUpdateInfo()
         _ui->updateButton->setEnabled(enableUpdateButton);
     }
 #endif
-}
-
-void GeneralSettings::slotUpdateChannelChanged()
-{
-    const auto updateChannelToLocalized = [](const QString &channel) {
-        if (channel == QStringLiteral("stable")) {
-            return tr("stable");
-        }
-
-        if (channel == QStringLiteral("beta")) {
-            return tr("beta");
-        }
-
-        if (channel == QStringLiteral("daily")) {
-            return tr("daily");
-        }
-
-        if (channel == QStringLiteral("enterprise")) {
-            return tr("enterprise");
-        }
-
-        return QString{};
-    };
-
-    const auto updateChannelFromLocalized = [](const int index) {
-        switch(index) {
-        case 1:
-            return QStringLiteral("beta");
-            break;
-        case 2:
-            return QStringLiteral("daily");
-            break;
-        case 3:
-            return QStringLiteral("enterprise");
-            break;
-        default:
-            return QStringLiteral("stable");
-        }
-    };
-
-    ConfigFile configFile;
-    const auto channel = updateChannelFromLocalized(_ui->updateChannel->currentIndex());
-    if (channel == configFile.currentUpdateChannel()) {
-        return;
-    }
-
-    const auto nonEnterpriseOptions = tr("- beta: contains versions with new features that may not be tested thoroughly\n"
-                                    "- daily: contains versions created daily only for testing and development\n"
-                                    "\n"
-                                    "Downgrading versions is not possible immediately: changing from beta to stable means waiting for the new stable version.",
-                                    "list of available update channels to non enterprise users and downgrading warning");
-    const auto enterpriseOptions = tr("- enterprise: contains stable versions for customers.\n"
-                                    "\n"
-                                    "Downgrading versions is not possible immediately: changing from stable to enterprise means waiting for the new enterprise version.",
-                                    "list of available update channels to enterprise users and downgrading warning");
-
-    auto msgBox = new QMessageBox(
-        QMessageBox::Warning,
-        tr("Changing update channel?"),
-        tr("The channel determines which upgrades will be offered to install:\n"
-           "- stable: contains tested versions considered reliable\n",
-           "starts list of available update channels, stable is always available")
-            .append(configFile.validUpdateChannels().contains("enterprise") ? enterpriseOptions : nonEnterpriseOptions),
-        QMessageBox::NoButton,
-        this);
-    const auto acceptButton = msgBox->addButton(tr("Change update channel"), QMessageBox::AcceptRole);
-    msgBox->addButton(tr("Cancel"), QMessageBox::RejectRole);
-    connect(msgBox, &QMessageBox::finished, msgBox, [this, channel, msgBox, acceptButton, updateChannelToLocalized] {
-        msgBox->deleteLater();
-        if (msgBox->clickedButton() == acceptButton) {
-            ConfigFile().setUpdateChannel(channel);
-            if (auto updater = qobject_cast<OCUpdater *>(Updater::instance())) {
-                updater->setUpdateUrl(Updater::updateUrl());
-                updater->checkForUpdate();
-            }
-#if defined(Q_OS_MAC) && defined(HAVE_SPARKLE)
-            else if (auto updater = qobject_cast<SparkleUpdater *>(Updater::instance())) {
-                updater->setUpdateUrl(Updater::updateUrl());
-                updater->checkForUpdate();
-            }
-#endif
-        } else {
-            _ui->updateChannel->setCurrentText(updateChannelToLocalized(ConfigFile().currentUpdateChannel()));
-        }
-    });
-    msgBox->open();
 }
 
 void GeneralSettings::slotUpdateCheckNow()
