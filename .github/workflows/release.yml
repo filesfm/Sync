@@ -561,7 +561,6 @@ jobs:
       # ships a JDK (CodeSignTool's only runtime dependency) on PATH
       # already. Pinned to a specific release rather than a "latest" URL.
       - name: Install CodeSignTool
-        if: false
         shell: pwsh
         run: |
           $zip = "$env:RUNNER_TEMP\CodeSignTool.zip"
@@ -833,7 +832,6 @@ jobs:
       # a scratch dir rather than the exe's own directory, to avoid
       # relying on undocumented in-place-overwrite confirmation behavior.
       - name: Sign application executable
-        if: false
         shell: pwsh
         env:
           SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
@@ -903,7 +901,6 @@ jobs:
       # inside it above, since Windows checks the installer package's
       # own Authenticode signature too (e.g. for SmartScreen reputation).
       - name: Sign MSI installer
-        if: false
         shell: pwsh
         env:
           SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
