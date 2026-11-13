@@ -758,29 +758,29 @@ QIcon Theme::folderStateIcon(SyncResult::Status status) const
     switch (status) {
     case SyncResult::Undefined:
         // this can happen if no sync connections are configured.
-        statusIcon = QLatin1String("warning");
+        statusIcon = QLatin1String("state-warning");
         break;
     case SyncResult::NotYetStarted:
     case SyncResult::SyncRunning:
-        statusIcon = QLatin1String("sync");
+        statusIcon = QLatin1String("state-sync");
         break;
     case SyncResult::SyncAbortRequested:
     case SyncResult::Paused:
-        statusIcon = QLatin1String("pause");
+        statusIcon = QLatin1String("state-pause");
         break;
     case SyncResult::SyncPrepare:
     case SyncResult::Success:
-        statusIcon = QLatin1String("ok");
+        statusIcon = QLatin1String("state-ok");
         break;
     case SyncResult::Problem:
-        statusIcon = QLatin1String("warning");
+        statusIcon = QLatin1String("state-warning");
         break;
     case SyncResult::SetupError:
-        statusIcon = QLatin1String("offline");
+        statusIcon = QLatin1String("state-offline");
         break;
     case SyncResult::Error:
     default:
-        statusIcon = QLatin1String("error");
+        statusIcon = QLatin1String("state-error");
     }
 
     return themeIcon(statusIcon, false);
