@@ -27,13 +27,6 @@
         </property>
        </widget>
       </item>
-      <item row="2" column="1">
-       <widget class="QCheckBox" name="callNotificationsCheckBox">
-        <property name="text">
-         <string>Show Call Notifications</string>
-        </property>
-       </widget>
-      </item>
       <item row="1" column="0">
        <widget class="QCheckBox" name="monoIconsCheckBox">
         <property name="toolTip">
@@ -41,13 +34,6 @@
         </property>
         <property name="text">
          <string>Use &amp;Monochrome Icons</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="1">
-       <widget class="QCheckBox" name="chatNotificationsCheckBox">
-        <property name="text">
-         <string>Show Chat Notifications</string>
         </property>
        </widget>
       </item>
@@ -456,13 +442,6 @@
       </item>
       <item>
        <layout class="QHBoxLayout" name="infoContainer">
-        <item>
-         <widget class="QPushButton" name="usageDocumentationButton">
-          <property name="text">
-           <string>Usage Documentation</string>
-          </property>
-         </widget>
-        </item>
         <item>
          <widget class="QPushButton" name="legalNoticeButton">
           <property name="text">
