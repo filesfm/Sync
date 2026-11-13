@@ -2105,6 +2105,40 @@ void FolderMan::slotProcessFileIdsPushNotification(Account *account, const QList
     }
 }
 
+void FolderMan::slotProcessForceReuploadPushNotification(Account *account, const QList<qint64> &fileIds)
+{
+    qCDebug(lcFolderMan).nospace() << "received notify_force_reupload push notification account=" << account->displayName() << " fileIds=" << fileIds;
+
+    for (auto folder : std::as_const(_folderMap)) {
+        // Just run on the folders that belong to this account
+        if (folder->accountState()->account() != account) {
+            continue;
+        }
+
+        if (!folder->hasFileIds(fileIds)) {
+            qCDebug(lcFolderMan).nospace() << "no matching file ids, ignoring folder=" << folder->alias() << " account=" << account->displayName();
+            continue;
+        }
+
+        auto touchedAnyPath = false;
+        for (const auto fileId : fileIds) {
+            folder->journalDb()->getFileRecordsByFileId(QByteArray::number(fileId), [&](const SyncJournalFileRecord &record) {
+                qCInfo(lcFolderMan).nospace() << "forcing re-upload of path=" << record.path() << " fileId=" << fileId << " folder=" << folder->alias();
+                folder->journalDb()->deleteFileRecord(record.path());
+                folder->schedulePathForLocalDiscovery(record.path());
+                touchedAnyPath = true;
+            });
+        }
+
+        if (!touchedAnyPath) {
+            continue;
+        }
+
+        qCInfo(lcFolderMan).nospace() << "scheduling sync folder=" << folder->alias() << " account=" << account->displayName() << " reason=notify_force_reupload";
+        scheduleFolder(folder);
+    }
+}
+
 void FolderMan::slotConnectToPushNotifications(const AccountPtr &account)
 {
     const auto pushNotifications = account->pushNotifications();
@@ -2113,6 +2147,7 @@ void FolderMan::slotConnectToPushNotifications(const AccountPtr &account)
         qCInfo(lcFolderMan) << "Push notifications ready";
         connect(pushNotifications, &PushNotifications::filesChanged, this, &FolderMan::slotProcessFilesPushNotification, Qt::UniqueConnection);
         connect(pushNotifications, &PushNotifications::fileIdsChanged, this, &FolderMan::slotProcessFileIdsPushNotification, Qt::UniqueConnection);
+        connect(pushNotifications, &PushNotifications::forceReuploadRequested, this, &FolderMan::slotProcessForceReuploadPushNotification, Qt::UniqueConnection);
     }
 }
 

@@ -71,6 +71,11 @@ Q_SIGNALS:
     void fileIdsChanged(OCC::Account *account, const QList<qint64> &fileIds);
 
     /**
+     * Will be emitted if the server requests a forced re-upload of specific files
+     */
+    void forceReuploadRequested(OCC::Account *account, const QList<qint64> &fileIds);
+
+    /**
      * Will be emitted if activities have been changed on the server
      */
     void activitiesChanged(OCC::Account *account);
@@ -117,6 +122,7 @@ private:
     void handleAuthenticated();
     void handleNotifyFile();
     void handleNotifyFileId(const QString &message);
+    void handleNotifyForceReupload(const QString &message);
     void handleInvalidCredentials();
     void handleNotifyNotification();
     void handleNotifyActivity();

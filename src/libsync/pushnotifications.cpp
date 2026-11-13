@@ -14,6 +14,7 @@ static constexpr int MAX_ALLOWED_FAILED_AUTHENTICATION_ATTEMPTS = 3;
 static constexpr int PING_INTERVAL = 30 * 1000;
 
 static constexpr QLatin1String NOTIFY_FILE_ID_PREFIX = QLatin1String{"notify_file_id "};
+static constexpr QLatin1String NOTIFY_FORCE_REUPLOAD_PREFIX = QLatin1String{"notify_force_reupload "};
 }
 
 namespace OCC {
@@ -108,6 +109,8 @@ void PushNotifications::onWebSocketTextMessageReceived(const QString &message)
 
     if (message.startsWith(NOTIFY_FILE_ID_PREFIX)) {
         handleNotifyFileId(message);
+    } else if (message.startsWith(NOTIFY_FORCE_REUPLOAD_PREFIX)) {
+        handleNotifyForceReupload(message);
     } else if (message == "notify_file") {
         handleNotifyFile();
     } else if (message == "notify_activity") {
@@ -192,6 +195,8 @@ void PushNotifications::handleAuthenticated()
     _failedAuthenticationAttemptsCount = 0;
     qCDebug(lcPushNotifications) << "Requesting opt-in to 'notify_file_id' notifications";
     _webSocket->sendTextMessage("listen notify_file_id");
+    qCDebug(lcPushNotifications) << "Requesting opt-in to 'notify_force_reupload' notifications";
+    _webSocket->sendTextMessage("listen notify_force_reupload");
     _isReady = true;
     startPingTimer();
     Q_EMIT ready();
@@ -239,6 +244,37 @@ void PushNotifications::handleNotifyFileId(const QString &message)
 
     qCDebug(lcPushNotifications) << "Emitting signal of changed file IDs.";
     Q_EMIT fileIdsChanged(_account, fileIds);
+}
+
+void PushNotifications::handleNotifyForceReupload(const QString &message)
+{
+    qCDebug(lcPushNotifications) << "Force-reupload push notification arrived";
+
+    QList<qint64> fileIds{};
+    QJsonParseError parseError;
+    const auto fileIdsJson = message.mid(NOTIFY_FORCE_REUPLOAD_PREFIX.length());
+    const auto jsonDoc = QJsonDocument::fromJson(fileIdsJson.toUtf8(), &parseError);
+
+    if (parseError.error != QJsonParseError::NoError) {
+        qCWarning(lcPushNotifications).nospace() << "could not parse received list of file IDs for force-reupload error=" << parseError.error << " errorString=" << parseError.errorString() << " fileIdsJson=" << fileIdsJson;
+        return;
+    }
+
+    if (const auto jsonArray = jsonDoc.array(); jsonDoc.isArray()) {
+        for (const auto& jsonFileid : jsonArray) {
+            if (const auto fileid = jsonFileid.toInteger(); jsonFileid.isDouble()) {
+                fileIds.push_back(fileid);
+            }
+        }
+    }
+
+    if (fileIds.empty()) {
+        qCDebug(lcPushNotifications) << "Cancelling force-reupload signal emission due to empty list of file IDs.";
+        return;
+    }
+
+    qCDebug(lcPushNotifications) << "Emitting signal of requested force-reupload file IDs.";
+    Q_EMIT forceReuploadRequested(_account, fileIds);
 }
 
 void PushNotifications::handleInvalidCredentials()
