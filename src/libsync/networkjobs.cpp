@@ -1247,9 +1247,9 @@ void DetermineAuthTypeJob::checkAllDone()
         result = LoginFlowV2;
     }
 
-    // If we determined that a simple get gave us an authentication required error
-    // then the server enforces basic auth and we got no choice but to use this
-    if (_resultGet == Basic) {
+    // Public share links must always use Basic auth (app password), regardless of
+    // server version / Login Flow v2 support.
+    if (_account->isPublicShareLink()) {
         result = Basic;
     }
 
