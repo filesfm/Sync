@@ -123,7 +123,7 @@ void SyncStatusSummary::setSyncStateForFolder(const Folder *folder)
     if (_accountState && !_accountState->isConnected()) {
         setSyncing(false);
         setTotalFiles(0);
-        setSyncStatusString(tr("Offline"));
+        setSyncStatusString(tr("Please log in again"));
         setSyncStatusDetailString("");
         setSyncIcon(Theme::instance()->folderOffline());
         return;
@@ -376,7 +376,7 @@ void SyncStatusSummary::setSyncStateToConnectedState()
     setTotalFiles(0);
     setSyncStatusDetailString("");
     if (_accountState && !_accountState->isConnected()) {
-        setSyncStatusString(tr("Offline"));
+        setSyncStatusString(tr("Please log in again"));
         setSyncIcon(Theme::instance()->folderOffline());
     } else {
         setSyncStatusString(tr("All synced!"));
