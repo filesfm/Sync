@@ -102,7 +102,8 @@ include_directories(
 )
 
 # disable the crashreporter if libcrashreporter-qt is not available or we're building for ARM
-if( CMAKE_SYSTEM_PROCESSOR MATCHES "arm" OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/libcrashreporter-qt/CMakeLists.txt")
+string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" MIRALL_SYSTEM_PROCESSOR_LOWER)
+if( MIRALL_SYSTEM_PROCESSOR_LOWER MATCHES "arm" OR NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/3rdparty/libcrashreporter-qt/CMakeLists.txt")
     set( WITH_CRASHREPORTER OFF )
 endif()
 

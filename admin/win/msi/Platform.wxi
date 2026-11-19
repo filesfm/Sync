@@ -17,7 +17,7 @@
 <Include>
 
     <!--
-        MSI packages are built either for x86 or x64, we use defines to maintain a single WiX script.
+        MSI packages are built for x86, x64 or arm64, we use defines to maintain a single WiX script.
 
         Some hints:
         https://www.joyofsetup.com/2010/05/14/working-hard-or-hardly-working/
@@ -26,6 +26,10 @@
     -->
 
     <?if $(var.Platform) = x64 ?>
+    <?define PlatformBitness = "(64-bit)" ?>
+    <?define PlatformWin64 = "yes" ?>
+    <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
+    <?elseif $(var.Platform) = arm64 ?>
     <?define PlatformBitness = "(64-bit)" ?>
     <?define PlatformWin64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>

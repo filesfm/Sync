@@ -17,7 +17,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
     <Fragment>
 
-        <?if $(var.Platform) = x64 ?>
+        <?if $(var.Platform) = x64 OR $(var.Platform) = arm64 ?>
         <?define bitness = "64" ?>
         <?else ?>
         <?define bitness = "32" ?>

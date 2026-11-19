@@ -954,9 +954,368 @@ jobs:
             dist/*.zip
           if-no-files-found: error
 
+  windows-arm64:
+    name: Windows ARM64
+    runs-on: windows-2022
+    env:
+      DEPS_PREFIX: ${{ github.workspace }}\deps
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      - name: Install Qt (host, x64)
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4
+        with:
+          version: '6.10.3'
+          arch: win64_msvc2022_64
+          modules: 'qt5compat qtwebsockets qtshadertools'
+          dir: ${{ github.workspace }}\qt-host
+          cache: true
+
+      - name: Capture host Qt root
+        shell: pwsh
+        run: echo "QT_HOST_ROOT=$env:QT_ROOT_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Qt (target, arm64)
+        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4
+        with:
+          version: '6.10.3'
+          arch: win64_msvc2022_arm64_cross_compiled
+          modules: 'qt5compat qtwebsockets qtshadertools'
+          dir: ${{ github.workspace }}\qt-target
+          cache: true
+
+      - name: Capture target Qt root
+        shell: pwsh
+        run: echo "QT_TARGET_ROOT=$env:QT_ROOT_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install Ninja
+        uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
+
+      - name: Install CodeSignTool
+        shell: pwsh
+        run: |
+          $zip = "$env:RUNNER_TEMP\CodeSignTool.zip"
+          Invoke-WebRequest -Uri 'https://github.com/SSLcom/CodeSignTool/releases/download/v1.3.2/CodeSignTool-v1.3.2-windows.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath "$env:RUNNER_TEMP\CodeSignTool"
+
+          $batPath = Get-ChildItem -Path "$env:RUNNER_TEMP\CodeSignTool" -Recurse -Filter "CodeSignTool.bat" | Select-Object -First 1
+          if (-not $batPath) { Write-Error "CodeSignTool.bat not found after extracting CodeSignTool"; exit 1 }
+          echo "CODESIGNTOOL_DIR=$($batPath.DirectoryName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Set up MSVC developer environment (x64_arm64 cross)
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        with:
+          arch: x64_arm64
+
+      - name: Verify ARM64 cross toolchain is active
+        shell: pwsh
+        run: |
+          if ($env:VSCMD_ARG_TGT_ARCH -ne 'arm64') {
+            Write-Error "MSVC dev environment is not targeting arm64 (VSCMD_ARG_TGT_ARCH='$env:VSCMD_ARG_TGT_ARCH'). The VS2022 ARM64 build tools component is likely missing from this runner image."
+            exit 1
+          }
+          Write-Host "MSVC dev environment confirmed targeting arm64."
+
+      - name: Install OpenSSL, SQLite3, ZLIB, BZip2, LZMA, zstd via vcpkg (arm64-windows)
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install openssl:arm64-windows sqlite3:arm64-windows zlib:arm64-windows bzip2:arm64-windows liblzma:arm64-windows zstd:arm64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $vcpkgInstalled = "$env:VCPKG_INSTALLATION_ROOT\installed\arm64-windows"
+          echo "VCPKG_INSTALLED=$vcpkgInstalled" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "PKG_CONFIG_PATH=$vcpkgInstalled\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install pkgconf via vcpkg (x64-windows host tool)
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install pkgconf:x64-windows
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $pkgconf = Get-ChildItem -Path "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows" -Recurse -Filter pkgconf.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $pkgconf) { Write-Error "pkgconf.exe not found under installed\x64-windows after vcpkg install"; exit 1 }
+          Copy-Item $pkgconf.FullName (Join-Path $pkgconf.DirectoryName 'pkg-config.exe')
+          echo $pkgconf.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Build and install libp11 (nmake)
+        shell: pwsh
+        run: |
+          $libp11Src = "$env:RUNNER_TEMP\libp11"
+          $libp11Prefix = "$env:DEPS_PREFIX\libp11"
+          git clone --depth 1 --branch libp11-0.4.20 https://github.com/OpenSC/libp11.git $libp11Src
+
+          Push-Location "$libp11Src\src"
+          nmake /nologo /f Makefile.mak BUILD_FOR=WIN64 OPENSSL_DIR="$env:VCPKG_INSTALLED"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Pop-Location
+
+          $headers = & dumpbin /headers "$libp11Src\src\libp11.dll" | Select-String -Pattern "machine"
+          if ($headers -notmatch "ARM64") {
+            Write-Error "libp11.dll does not report an ARM64 machine type after nmake build: $headers"
+            exit 1
+          }
+
+          New-Item -ItemType Directory -Force -Path "$libp11Prefix\include", "$libp11Prefix\lib\pkgconfig", "$libp11Prefix\bin" | Out-Null
+          Copy-Item "$libp11Src\src\libp11.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\p11_ver.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\p11_err.h" "$libp11Prefix\include\"
+          Copy-Item "$libp11Src\src\libp11.lib" "$libp11Prefix\lib\"
+          Copy-Item "$libp11Src\src\libp11.dll" "$libp11Prefix\bin\"
+
+          $prefixForward = $libp11Prefix -replace '\\','/'
+          $pcLines = @(
+            "prefix=$prefixForward"
+            'libdir=${prefix}/lib'
+            'includedir=${prefix}/include'
+            ''
+            'Name: libp11'
+            'Description: Library for using PKCS#11 tokens with OpenSSL'
+            'Version: 0.4.20'
+            'Libs: -L${libdir} -llibp11'
+            'Cflags: -I${includedir}'
+          )
+          Set-Content -Path "$libp11Prefix\lib\pkgconfig\libp11.pc" -Value $pcLines -Encoding ascii
+
+          echo "PKG_CONFIG_PATH=$libp11Prefix\lib\pkgconfig;$env:PKG_CONFIG_PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$libp11Prefix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Cache Install inkscape
+        id: cache-install-inkscape
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: C:\Program Files\inkscape
+          key: ${{ runner.os }}-cache-install-inkscape
+
+      - name: Install inkscape
+        if: steps.cache-install-inkscape.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: choco install inkscape
+
+      - name: Build and install extra-cmake-modules
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$env:RUNNER_TEMP\ecm"
+          cmake -S "$env:RUNNER_TEMP\ecm" -B "$env:RUNNER_TEMP\ecm-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\ecm-build" --parallel $env:NUMBER_OF_PROCESSORS
+          cmake --install "$env:RUNNER_TEMP\ecm-build"
+
+      - name: Build and install KF6Archive
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/karchive.git "$env:RUNNER_TEMP\karchive"
+          cmake -S "$env:RUNNER_TEMP\karchive" -B "$env:RUNNER_TEMP\karchive-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_WITH_QT6=ON `
+            -DBUILD_TESTING=OFF `
+            -DCMAKE_PREFIX_PATH="$env:DEPS_PREFIX;$env:VCPKG_INSTALLED;$env:QT_TARGET_ROOT" `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\karchive-build" --parallel $env:NUMBER_OF_PROCESSORS
+          cmake --install "$env:RUNNER_TEMP\karchive-build"
+
+      - name: Build and install qtkeychain
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$env:RUNNER_TEMP\qtkeychain"
+          cmake -S "$env:RUNNER_TEMP\qtkeychain" -B "$env:RUNNER_TEMP\qtkeychain-build" -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_WITH_QT6=ON `
+            -DCMAKE_PREFIX_PATH="$env:QT_TARGET_ROOT" `
+            -DCMAKE_INSTALL_PREFIX="$env:DEPS_PREFIX"
+          cmake --build "$env:RUNNER_TEMP\qtkeychain-build" --parallel $env:NUMBER_OF_PROCESSORS
+          cmake --install "$env:RUNNER_TEMP\qtkeychain-build"
+
+      - name: Install icoutils (icotool) via MSYS2
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\pacman.exe -S --noconfirm --needed mingw-w64-x86_64-icoutils
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install WiX Toolset 3.14.1 (ARM64-capable) via NuGet
+        shell: pwsh
+        run: |
+          $wixPkgDir = "$env:RUNNER_TEMP\wix314-pkg"
+          nuget install wix -Version 3.14.1 -OutputDirectory $wixPkgDir -NonInteractive
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $wixPackageRoot = Get-ChildItem -Path $wixPkgDir -Directory -Filter "wix.3.14.1" | Select-Object -First 1
+          if (-not $wixPackageRoot) { Write-Error "wix 3.14.1 NuGet package not found after install"; exit 1 }
+
+          $candle = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Filter "candle.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $candle) { Write-Error "candle.exe not found inside the wix 3.14.1 NuGet package -- its internal layout may not match what this step expects"; exit 1 }
+          $wixToolsDir = $candle.DirectoryName
+
+          $sdkInc = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "inc" -ErrorAction SilentlyContinue | Select-Object -First 1
+          $sdkLibX64 = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "x64" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\lib\\' } | Select-Object -First 1
+          if (-not $sdkInc -or -not $sdkLibX64) { Write-Error "Could not locate WiX SDK inc/lib directories inside the NuGet package"; exit 1 }
+
+          $wixRoot = "$env:RUNNER_TEMP\wix-staged"
+          New-Item -ItemType Directory -Force -Path "$wixRoot\bin", "$wixRoot\SDK\VS2017\lib" | Out-Null
+          Copy-Item "$wixToolsDir\*" "$wixRoot\bin\" -Recurse
+          Copy-Item $sdkInc.FullName "$wixRoot\SDK\VS2017\inc" -Recurse
+          Copy-Item $sdkLibX64.FullName "$wixRoot\SDK\VS2017\lib\x64" -Recurse
+          echo "WIX=$wixRoot\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "$wixRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure, compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          cmake -S "$env:GITHUB_WORKSPACE" -B "$env:GITHUB_WORKSPACE\build" -G Ninja `
+            -DCMAKE_PREFIX_PATH="$env:DEPS_PREFIX;$env:VCPKG_INSTALLED;$env:QT_TARGET_ROOT" `
+            -DCMAKE_INSTALL_PREFIX="$env:GITHUB_WORKSPACE\install" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=OFF `
+            -DBUILD_UPDATER=ON `
+            -DBUILD_WITH_WEBENGINE=OFF `
+            -DWITH_CRASHREPORTER=OFF `
+            -DMSI_TARGET_ARCH=arm64 `
+            -DQT_HOST_PATH="$env:QT_HOST_ROOT" `
+            -DAPPLICATION_UPDATE_URL="$env:UPDATE_URL" `
+            -DBUILD_WIN_MSI=ON `
+            -DECM_FIND_MODULE_DIR="$env:DEPS_PREFIX\share\ECM\find-modules" `
+            -DIcoTool_EXECUTABLE="C:\msys64\mingw64\bin\icotool.exe" `
+            -DMIRALL_VERSION_BUILD="$env:GITHUB_RUN_NUMBER" `
+            -DMIRALL_VERSION_SUFFIX=""
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          cmake --build "$env:GITHUB_WORKSPACE\build" --parallel $env:NUMBER_OF_PROCESSORS
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          cmake --install "$env:GITHUB_WORKSPACE\build"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Stage third-party runtime DLLs
+        shell: pwsh
+        run: |
+          $qtkeychainDll = "$env:DEPS_PREFIX\bin\qt6keychain.dll"
+          if (-not (Test-Path $qtkeychainDll)) { Write-Error "qt6keychain.dll not found under DEPS_PREFIX\bin"; exit 1 }
+          Copy-Item $qtkeychainDll "$env:QT_TARGET_ROOT\bin\qt6keychain.dll"
+
+          Get-ChildItem -Path "$env:DEPS_PREFIX" -Recurse -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
+          Get-ChildItem -Path "$env:VCPKG_INSTALLED\bin" -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
+
+      - name: Deploy Qt runtime with windeployqt
+        shell: pwsh
+        run: |
+          & "$env:QT_TARGET_ROOT\bin\windeployqt.exe" --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Sign application executable
+        shell: pwsh
+        env:
+          SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSLCOM_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSLCOM_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          SSLCOM_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+        run: |
+          $exe = "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          $signedDir = "$env:RUNNER_TEMP\signed-exe"
+          New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
+
+          Push-Location "$env:CODESIGNTOOL_DIR"
+          try {
+            .\CodeSignTool.bat sign `
+              -credential_id="$env:SSLCOM_CREDENTIAL_ID" `
+              -username="$env:SSLCOM_USERNAME" `
+              -password="$env:SSLCOM_PASSWORD" `
+              -totp_secret="$env:SSLCOM_TOTP_SECRET" `
+              -input_file_path="$exe" `
+              -output_dir_path="$signedDir"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Pop-Location
+          }
+
+          Copy-Item (Join-Path $signedDir "files_fm_sync.exe") $exe -Force
+
+      - name: Stage app icon for WiX
+        shell: pwsh
+        run: |
+          $icon = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\build" -Recurse -Filter "files_fm_sync.ico" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $icon) { Write-Error "files_fm_sync.ico not found under the build tree"; exit 1 }
+          Copy-Item $icon.FullName "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.ico"
+
+      - name: Build MSI installer with WiX
+        shell: pwsh
+        run: |
+          Push-Location "$env:GITHUB_WORKSPACE\install\msi"
+          cmd /c make-msi.bat "$env:GITHUB_WORKSPACE\install\bin"
+          $exitCode = $LASTEXITCODE
+          Pop-Location
+          if ($exitCode -ne 0) { exit $exitCode }
+
+      - name: Locate installer
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          mkdir dist | Out-Null
+          $installer = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\install\msi" -Filter "*.msi" | Select-Object -First 1
+          if (-not $installer) { Write-Error "Could not locate a packaged .msi under install\msi"; exit 1 }
+          $version = $env:VERSION -replace '^v',''
+          Copy-Item $installer.FullName -Destination "dist\files_fm_sync-$version-arm64.msi"
+
+      - name: Sign MSI installer
+        shell: pwsh
+        env:
+          SSLCOM_CREDENTIAL_ID: ${{ secrets.SSLCOM_CREDENTIAL_ID }}
+          SSLCOM_USERNAME: ${{ secrets.SSLCOM_USERNAME }}
+          SSLCOM_PASSWORD: ${{ secrets.SSLCOM_PASSWORD }}
+          SSLCOM_TOTP_SECRET: ${{ secrets.SSLCOM_TOTP_SECRET }}
+        run: |
+          $msi = Get-ChildItem -Path dist -Filter "*.msi" | Select-Object -First 1
+          if (-not $msi) { Write-Error "Could not locate a .msi under dist\ to sign"; exit 1 }
+
+          $signedDir = "$env:RUNNER_TEMP\signed-msi"
+          New-Item -ItemType Directory -Force -Path $signedDir | Out-Null
+
+          Push-Location "$env:CODESIGNTOOL_DIR"
+          try {
+            .\CodeSignTool.bat sign `
+              -credential_id="$env:SSLCOM_CREDENTIAL_ID" `
+              -username="$env:SSLCOM_USERNAME" `
+              -password="$env:SSLCOM_PASSWORD" `
+              -totp_secret="$env:SSLCOM_TOTP_SECRET" `
+              -input_file_path="$($msi.FullName)" `
+              -output_dir_path="$signedDir"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          finally {
+            Pop-Location
+          }
+
+          Copy-Item (Join-Path $signedDir $msi.Name) $msi.FullName -Force
+
+      - name: Build portable zip
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          $version = $env:VERSION -replace '^v',''
+          $packageDir = "files_fm_sync-$version-arm64"
+          Copy-Item "$env:GITHUB_WORKSPACE\install\bin" "$env:GITHUB_WORKSPACE\$packageDir" -Recurse
+          Copy-Item "$env:GITHUB_WORKSPACE\COPYING" "$env:GITHUB_WORKSPACE\$packageDir\"
+          7z a -tzip "dist\files_fm_sync-$version-arm64.zip" "$env:GITHUB_WORKSPACE\$packageDir"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-arm64
+          path: |
+            dist/*.msi
+            dist/*.zip
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [appimage, macos, windows]
+    needs: [appimage, macos, windows, windows-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
