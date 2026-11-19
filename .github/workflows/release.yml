@@ -1159,14 +1159,16 @@ jobs:
           $wixToolsDir = $candle.DirectoryName
 
           $sdkInc = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "inc" -ErrorAction SilentlyContinue | Select-Object -First 1
-          $sdkLibX64 = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "x64" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\lib\\' } | Select-Object -First 1
-          if (-not $sdkInc -or -not $sdkLibX64) { Write-Error "Could not locate WiX SDK inc/lib directories inside the NuGet package"; exit 1 }
+          $sdkLibX64 = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "x64" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\vs2017\\lib\\x64$' } | Select-Object -First 1
+          $sdkLibArm64 = Get-ChildItem -Path $wixPackageRoot.FullName -Recurse -Directory -Filter "arm64" -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\vs2017\\lib\\arm64$' } | Select-Object -First 1
+          if (-not $sdkInc -or -not $sdkLibX64 -or -not $sdkLibArm64) { Write-Error "Could not locate WiX SDK inc/lib directories inside the NuGet package"; exit 1 }
 
           $wixRoot = "$env:RUNNER_TEMP\wix-staged"
           New-Item -ItemType Directory -Force -Path "$wixRoot\bin", "$wixRoot\SDK\VS2017\lib" | Out-Null
           Copy-Item "$wixToolsDir\*" "$wixRoot\bin\" -Recurse
           Copy-Item $sdkInc.FullName "$wixRoot\SDK\VS2017\inc" -Recurse
           Copy-Item $sdkLibX64.FullName "$wixRoot\SDK\VS2017\lib\x64" -Recurse
+          Copy-Item $sdkLibArm64.FullName "$wixRoot\SDK\VS2017\lib\arm64" -Recurse
           echo "WIX=$wixRoot\" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "$wixRoot\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 

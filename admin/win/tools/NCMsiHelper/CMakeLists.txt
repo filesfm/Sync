@@ -9,7 +9,9 @@ endif()
 
 include_directories(${WIX_SDK_PATH}/inc)
 
-if(CMAKE_SIZEOF_VOID_P MATCHES 4)
+if(MSI_TARGET_ARCH STREQUAL "arm64")
+    link_directories(${WIX_SDK_PATH}/lib/arm64)
+elseif(CMAKE_SIZEOF_VOID_P MATCHES 4)
     link_directories(${WIX_SDK_PATH}/lib/x86)
 else()
     link_directories(${WIX_SDK_PATH}/lib/x64)
