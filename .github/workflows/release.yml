@@ -1216,18 +1216,34 @@ jobs:
       - name: Deploy Qt runtime with windeployqt
         shell: pwsh
         run: |
-          # The arm64 cross-compiled Qt package has no windeployqt.exe of its own
-          # (jurplel/install-qt-action#299-adjacent aqt limitation), so we run the
-          # host (x64) windeployqt.exe -- it's just a PE/QML scanner, its own
-          # architecture doesn't matter. Left to itself, though, it resolves "the
-          # Qt install" from its own location (QT_HOST_ROOT) and happily deploys
-          # x64 Qt DLLs next to the arm64 exe. --qtpaths points it at the arm64
-          # kit's qtpaths script so it resolves binaries/plugins/qml imports from
-          # QT_TARGET_ROOT instead.
-          $qtpaths = Get-ChildItem -Path "$env:QT_TARGET_ROOT\bin" -Filter "qtpaths*.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if (-not $qtpaths) { Write-Error "qtpaths*.bat not found under QT_TARGET_ROOT\bin -- windeployqt has no way to resolve the arm64 Qt install"; exit 1 }
+          # windeployqt.exe/qtpaths.exe *do* exist under QT_TARGET_ROOT\bin, but
+          # they're ARM64 binaries -- unrunnable on this x64 runner. We run the
+          # host (x64) windeployqt.exe instead; it's just a PE/QML scanner, so
+          # its own architecture doesn't matter for what it deploys. Left to
+          # itself, though, it resolves "the Qt install" from its own location
+          # (QT_HOST_ROOT) and happily deploys x64 Qt DLLs next to the arm64 exe.
+          #
+          # --qtpaths redirects that resolution to a given qtpaths executable's
+          # query output. The arm64 kit ships host-qtpaths6.bat for exactly this,
+          # pairing the host qtpaths6.exe with target_qt.conf (-qtconf), whose
+          # [Paths] are relative to QT_TARGET_ROOT\bin so they resolve to the
+          # arm64 install regardless of where it's rooted -- but the shipped
+          # script hardcodes the Qt project's own CI path to qtpaths6.exe
+          # (\Users\qt\work\install\bin\...), which doesn't exist here. Write our
+          # own wrapper with the real host path instead of patching the shipped
+          # (installed, cached) one in place.
+          $targetQtConf = "$env:QT_TARGET_ROOT\bin\target_qt.conf"
+          if (-not (Test-Path $targetQtConf)) { Write-Error "target_qt.conf not found under QT_TARGET_ROOT\bin"; exit 1 }
+          $hostQtpaths = "$env:QT_HOST_ROOT\bin\qtpaths6.exe"
+          if (-not (Test-Path $hostQtpaths)) { Write-Error "qtpaths6.exe not found under QT_HOST_ROOT\bin"; exit 1 }
 
-          & "$env:QT_HOST_ROOT\bin\windeployqt.exe" --qtpaths $qtpaths.FullName --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          $qtpathsWrapper = "$env:RUNNER_TEMP\arm64-qtpaths.bat"
+          Set-Content -Path $qtpathsWrapper -Encoding ascii -Value @(
+            "@echo off"
+            "`"$hostQtpaths`" -qtconf `"$targetQtConf`" %*"
+          )
+
+          & "$env:QT_HOST_ROOT\bin\windeployqt.exe" --qtpaths $qtpathsWrapper --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           $core = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\install\bin" -Filter "Qt6Core.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
