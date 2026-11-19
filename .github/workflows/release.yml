@@ -158,6 +158,7 @@ jobs:
             -DCMAKE_INSTALL_LIBDIR=lib \
             -DBUILD_TESTING=OFF \
             -DBUILD_UPDATER=ON \
+            -DBUILD_APPIMAGE_UPDATER=ON \
             -DAPPLICATION_UPDATE_URL="$UPDATE_URL" \
             -DMIRALL_VERSION_BUILD="${GITHUB_RUN_NUMBER}" \
             -DMIRALL_VERSION_SUFFIX=""
@@ -1207,6 +1208,7 @@ jobs:
           $qtkeychainDll = "$env:DEPS_PREFIX\bin\qt6keychain.dll"
           if (-not (Test-Path $qtkeychainDll)) { Write-Error "qt6keychain.dll not found under DEPS_PREFIX\bin"; exit 1 }
           Copy-Item $qtkeychainDll "$env:QT_HOST_ROOT\bin\qt6keychain.dll"
+          Copy-Item $qtkeychainDll "$env:QT_TARGET_ROOT\bin\qt6keychain.dll"
 
           Get-ChildItem -Path "$env:DEPS_PREFIX" -Recurse -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
           Get-ChildItem -Path "$env:VCPKG_INSTALLED\bin" -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
@@ -1214,8 +1216,28 @@ jobs:
       - name: Deploy Qt runtime with windeployqt
         shell: pwsh
         run: |
-          & "$env:QT_HOST_ROOT\bin\windeployqt.exe" --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          # The arm64 cross-compiled Qt package has no windeployqt.exe of its own
+          # (jurplel/install-qt-action#299-adjacent aqt limitation), so we run the
+          # host (x64) windeployqt.exe -- it's just a PE/QML scanner, its own
+          # architecture doesn't matter. Left to itself, though, it resolves "the
+          # Qt install" from its own location (QT_HOST_ROOT) and happily deploys
+          # x64 Qt DLLs next to the arm64 exe. --qtpaths points it at the arm64
+          # kit's qtpaths script so it resolves binaries/plugins/qml imports from
+          # QT_TARGET_ROOT instead.
+          $qtpaths = Get-ChildItem -Path "$env:QT_TARGET_ROOT\bin" -Filter "qtpaths*.bat" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $qtpaths) { Write-Error "qtpaths*.bat not found under QT_TARGET_ROOT\bin -- windeployqt has no way to resolve the arm64 Qt install"; exit 1 }
+
+          & "$env:QT_HOST_ROOT\bin\windeployqt.exe" --qtpaths $qtpaths.FullName --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $core = Get-ChildItem -Path "$env:GITHUB_WORKSPACE\install\bin" -Filter "Qt6Core.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $core) { Write-Error "Qt6Core.dll not found under install\bin after windeployqt"; exit 1 }
+          $headers = & dumpbin /headers $core.FullName | Select-String -Pattern "machine"
+          if ($headers -notmatch "ARM64") {
+            Write-Error "windeployqt deployed a non-ARM64 Qt6Core.dll ($headers) -- it fell back to the host (x64) Qt install instead of the arm64 target install"
+            exit 1
+          }
+          Write-Host "Verified deployed Qt6Core.dll is ARM64: $headers"
 
       - name: Sign application executable
         shell: pwsh
