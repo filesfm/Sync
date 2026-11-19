@@ -1055,7 +1055,7 @@ jobs:
           git clone --depth 1 --branch libp11-0.4.20 https://github.com/OpenSC/libp11.git $libp11Src
 
           Push-Location "$libp11Src\src"
-          nmake /nologo /f Makefile.mak BUILD_FOR=WIN64 OPENSSL_DIR="$env:VCPKG_INSTALLED"
+          nmake /nologo /f Makefile.mak BUILD_FOR=WIN64 OPENSSL_DIR="$env:VCPKG_INSTALLED" MACHINE=/MACHINE:ARM64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Pop-Location
 
