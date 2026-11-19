@@ -1206,7 +1206,7 @@ jobs:
         run: |
           $qtkeychainDll = "$env:DEPS_PREFIX\bin\qt6keychain.dll"
           if (-not (Test-Path $qtkeychainDll)) { Write-Error "qt6keychain.dll not found under DEPS_PREFIX\bin"; exit 1 }
-          Copy-Item $qtkeychainDll "$env:QT_TARGET_ROOT\bin\qt6keychain.dll"
+          Copy-Item $qtkeychainDll "$env:QT_HOST_ROOT\bin\qt6keychain.dll"
 
           Get-ChildItem -Path "$env:DEPS_PREFIX" -Recurse -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
           Get-ChildItem -Path "$env:VCPKG_INSTALLED\bin" -Filter "*.dll" | Copy-Item -Destination "$env:GITHUB_WORKSPACE\install\bin"
