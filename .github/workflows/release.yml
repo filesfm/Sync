@@ -1214,7 +1214,7 @@ jobs:
       - name: Deploy Qt runtime with windeployqt
         shell: pwsh
         run: |
-          & "$env:QT_TARGET_ROOT\bin\windeployqt.exe" --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
+          & "$env:QT_HOST_ROOT\bin\windeployqt.exe" --release --no-translations --qmldir "$env:GITHUB_WORKSPACE\src\gui" "$env:GITHUB_WORKSPACE\install\bin\files_fm_sync.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Sign application executable
