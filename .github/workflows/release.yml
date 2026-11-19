@@ -979,17 +979,15 @@ jobs:
         run: echo "QT_HOST_ROOT=$env:QT_ROOT_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Qt (target, arm64)
-        uses: jurplel/install-qt-action@b344308e4483fc892e0d27b3cd1b173ebdd95f06 # v4
-        with:
-          version: '6.10.3'
-          arch: win64_msvc2022_arm64_cross_compiled
-          modules: 'qt5compat qtwebsockets qtshadertools'
-          dir: ${{ github.workspace }}\qt-target
-          cache: true
-
-      - name: Capture target Qt root
         shell: pwsh
-        run: echo "QT_TARGET_ROOT=$env:QT_ROOT_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        run: |
+          python -m pip install "aqtinstall==3.3.*"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          python -m aqt install-qt windows desktop 6.10.3 win64_msvc2022_arm64_cross_compiled --outputdir "$env:GITHUB_WORKSPACE\qt-target\Qt" --modules qt5compat qtwebsockets qtshadertools
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          echo "QT_TARGET_ROOT=$env:GITHUB_WORKSPACE\qt-target\Qt\6.10.3\msvc2022_arm64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install Ninja
         uses: seanmiddleditch/gha-setup-ninja@3b1f8f94a2f8254bd26914c4ab9474d4f0015f67 # v6
