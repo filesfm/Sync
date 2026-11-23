@@ -376,6 +376,19 @@ else()
    set_property(SOURCE ../3rdparty/qtlockedfile/qtlockedfile_win.cpp PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+   list(APPEND 3rdparty_SRC
+        ../3rdparty/kdsingleapplication/kdsingleapplication.h
+        ../3rdparty/kdsingleapplication/kdsingleapplication.cpp
+        ../3rdparty/kdsingleapplication/kdsingleapplication_lib.h
+        ../3rdparty/kdsingleapplication/kdsingleapplication_localsocket_p.h
+        ../3rdparty/kdsingleapplication/kdsingleapplication_localsocket.cpp
+   )
+   set_property(SOURCE ../3rdparty/kdsingleapplication/kdsingleapplication.cpp PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+   set_property(SOURCE ../3rdparty/kdsingleapplication/kdsingleapplication_localsocket.cpp PROPERTY SKIP_UNITY_BUILD_INCLUSION ON)
+   add_definitions(-DKDSINGLEAPPLICATION_STATIC_BUILD)
+endif()
+
 find_package(Qt${QT_VERSION_MAJOR} ${REQUIRED_QT_VERSION} COMPONENTS LinguistTools)
 if(Qt${QT_MAJOR_VERSION}LinguistTools_FOUND)
     qt_add_translation(client_I18N ${TRANSLATIONS})
@@ -603,6 +616,7 @@ target_include_directories(nextcloudCore
   ${CMAKE_SOURCE_DIR}/src/3rdparty/qtlockedfile
   ${CMAKE_SOURCE_DIR}/src/3rdparty/kirigami
   ${CMAKE_SOURCE_DIR}/src/3rdparty/qtsingleapplication
+  ${CMAKE_SOURCE_DIR}/src/3rdparty/kdsingleapplication
   ${CMAKE_SOURCE_DIR}/src/3rdparty/kmessagewidget
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}

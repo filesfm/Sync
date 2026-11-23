@@ -22,7 +22,11 @@
 #include <QElapsedTimer>
 #include <QNetworkInformation>
 
+#if defined(Q_OS_LINUX)
+#include "linuxsingleapplication.h"
+#else
 #include "qtsingleapplication.h"
+#endif
 
 #include "syncresult.h"
 #include "logbrowser.h"
@@ -53,7 +57,11 @@ class SslErrorDialog;
  * @brief The Application class
  * @ingroup gui
  */
+#if defined(Q_OS_LINUX)
+class Application : public QApplication
+#else
 class Application : public SharedTools::QtSingleApplication
+#endif
 {
     Q_OBJECT
 public:
@@ -67,6 +75,11 @@ public:
     [[nodiscard]] bool backgroundMode() const;
     bool versionOnly(); // only display the version?
     void showVersion();
+
+#if defined(Q_OS_LINUX)
+    [[nodiscard]] bool isRunning() const;
+    bool sendMessage(const QString &message);
+#endif
 
     void showMainDialog();
 
@@ -125,6 +138,9 @@ private:
     QPointer<ownCloudGui> _gui;
 
     Theme *_theme;
+#if defined(Q_OS_LINUX)
+    KDSingleApplication _singleApp;
+#endif
 
     bool _helpOnly = false;
     bool _versionOnly = false;

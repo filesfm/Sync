@@ -61,6 +61,10 @@ endif()
 
 nextcloud_add_test(Utility)
 
+if (LINUX)
+    nextcloud_add_test(LinuxSingleApplication)
+endif()
+
 if (APPLE)
     add_subdirectory(macOS)
 endif()

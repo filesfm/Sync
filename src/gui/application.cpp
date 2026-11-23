@@ -223,9 +223,16 @@ ownCloudGui *Application::gui() const
 }
 
 Application::Application(int &argc, char **argv)
+#if defined(Q_OS_LINUX)
+    : QApplication(argc, argv)
+#else
     : SharedTools::QtSingleApplication(Theme::instance()->appName(), argc, argv)
+#endif
     , _gui(nullptr)
     , _theme(Theme::instance())
+#if defined(Q_OS_LINUX)
+    , _singleApp(Utility::makeLinuxSingleApplication(QLatin1String(APPLICATION_EXECUTABLE)))
+#endif
 {
     _startedAt.start();
 
@@ -362,7 +369,13 @@ Application::Application(int &argc, char **argv)
     _shellExtensionsServer.reset(new ShellExtensionsServer);
 #endif
 
+#if defined(Q_OS_LINUX)
+    connect(&_singleApp, &KDSingleApplication::messageReceived, this, [this](const QByteArray &message) {
+        slotParseMessage(QString::fromUtf8(message), nullptr);
+    });
+#else
     connect(this, &SharedTools::QtSingleApplication::messageReceived, this, &Application::slotParseMessage);
+#endif
 
     // create accounts and folders from a legacy desktop client or from the current config file
     setupAccountsAndFolders();
@@ -444,6 +457,18 @@ Application::Application(int &argc, char **argv)
     Mac::FileProvider::instance();
 #endif
 }
+
+#if defined(Q_OS_LINUX)
+bool Application::isRunning() const
+{
+    return !_singleApp.isPrimaryInstance();
+}
+
+bool Application::sendMessage(const QString &message)
+{
+    return _singleApp.sendMessage(message.toUtf8());
+}
+#endif
 
 Application::~Application()
 {
@@ -1111,7 +1136,11 @@ bool Application::event(QEvent *event)
         qCInfo(lcApplication) << "application palette changed";
         emit systemPaletteChanged();
     }
+#if defined(Q_OS_LINUX)
+    return QApplication::event(event);
+#else
     return SharedTools::QtSingleApplication::event(event);
+#endif
 }
 
 } // namespace OCC
