@@ -38,6 +38,8 @@ ApplicationWindow {
     // If the main dialog is displayed as a regular window we want it to be quadratic
     width:      Systray.useNormalWindow ? Style.trayWindowHeight : Style.trayWindowWidth
     height:     Style.trayWindowHeight
+    minimumWidth:  Systray.useNormalWindow ? Style.trayWindowHeight : Style.trayWindowWidth
+    minimumHeight: Style.trayWindowHeight
     flags:      Systray.useNormalWindow ? Qt.Window : Qt.Dialog | Qt.FramelessWindowHint
     color: "transparent"
 
