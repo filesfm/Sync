@@ -145,8 +145,8 @@ RowLayout {
         rightPadding: 8 // Adjusted
         topPadding: 8   // Adjusted
         bottomPadding: 8// Adjusted
-        icon.width: Math.round(Math.min(width, height) * 0.9)
-        icon.height: Math.round(Math.min(width, height) * 0.9)
+        icon.width: Math.round((32 - 8 * 2) * 0.9)
+        icon.height: Math.round((32 - 8 * 2) * 0.9)
         Layout.alignment: Qt.AlignVCenter
         HoverHandler { cursorShape: Qt.PointingHandCursor }
 
@@ -179,8 +179,8 @@ RowLayout {
         rightPadding: 8 // Adjusted
         topPadding: 8   // Adjusted
         bottomPadding: 8// Adjusted
-        icon.width: Math.round(Math.min(width, height) * 0.9)
-        icon.height: Math.round(Math.min(width, height) * 0.9)
+        icon.width: Math.round((32 - 8 * 2) * 0.9)
+        icon.height: Math.round((32 - 8 * 2) * 0.9)
         Layout.alignment: Qt.AlignVCenter
         HoverHandler { cursorShape: Qt.PointingHandCursor }
 

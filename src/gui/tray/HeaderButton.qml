@@ -41,8 +41,8 @@ Button {
     leftInset: 0
     rightInset: 0
 
-    icon.width: width
-    icon.height: height
+    icon.width: Style.trayWindowHeaderHeight
+    icon.height: Style.trayWindowHeaderHeight
     icon.color: "transparent"
 
     palette {
