@@ -2,12 +2,20 @@
 
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QtSystemDetection>
 
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <winternl.h>
 #include <ntstatus.h>
+#elif defined(Q_OS_LINUX)
+#include <climits>
+#include <unistd.h>
+#elif defined(Q_OS_MACOS)
+#include <libproc.h>
+#include <sys/proc_info.h>
+#include <unistd.h>
 #endif
 
 #include <iostream>
@@ -206,6 +214,107 @@ QSet<QString> getFileHandles(const QString &path) {
     for (auto& kv : processCache) {
         if (kv.second) CloseHandle(kv.second);
     }
+    return openFiles;
+#elif defined(Q_OS_LINUX)
+    QSet<QString> openFiles;
+    if (path.isEmpty()) {
+        return openFiles;
+    }
+
+    const pid_t currentPid = getpid();
+
+    QDir procDir(QStringLiteral("/proc"));
+    const auto pidEntries = procDir.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const QString &pidStr : pidEntries) {
+        bool pidIsNumeric = false;
+        const qint64 pid = pidStr.toLongLong(&pidIsNumeric);
+        if (!pidIsNumeric || pid == currentPid) {
+            continue;
+        }
+
+        QDir fdDir(QStringLiteral("/proc/%1/fd").arg(pid));
+        const auto fdEntries = fdDir.entryList(QDir::NoDotAndDotDot | QDir::System | QDir::AllDirs | QDir::Files);
+
+        for (const QString &fd : fdEntries) {
+            const QByteArray fdPath = fdDir.filePath(fd).toLocal8Bit();
+
+            char targetBuffer[PATH_MAX];
+            const ssize_t targetLen = readlink(fdPath.constData(), targetBuffer, sizeof(targetBuffer) - 1);
+            if (targetLen < 0) {
+                // fd vanished (race) or we lack permission to inspect this process - skip it
+                continue;
+            }
+            targetBuffer[targetLen] = '\0';
+
+            const QString target = QString::fromLocal8Bit(targetBuffer, static_cast<int>(targetLen));
+            if (target.startsWith(QLatin1String("pipe:")) || target.startsWith(QLatin1String("socket:"))
+                || target.startsWith(QLatin1String("anon_inode:"))) {
+                continue;
+            }
+
+            if (target.startsWith(path) && !QFileInfo(target).isDir()) {
+                openFiles.insert(target);
+            }
+        }
+    }
+
+    return openFiles;
+#elif defined(Q_OS_MACOS)
+    QSet<QString> openFiles;
+    if (path.isEmpty()) {
+        return openFiles;
+    }
+
+    const pid_t currentPid = getpid();
+
+    int pidBufferSize = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
+    if (pidBufferSize <= 0) {
+        return openFiles;
+    }
+    std::vector<pid_t> pids(pidBufferSize / sizeof(pid_t) + 16);
+    pidBufferSize = proc_listpids(PROC_ALL_PIDS, 0, pids.data(), static_cast<int>(pids.size() * sizeof(pid_t)));
+    if (pidBufferSize <= 0) {
+        return openFiles;
+    }
+    const int pidCount = pidBufferSize / static_cast<int>(sizeof(pid_t));
+
+    for (int i = 0; i < pidCount; ++i) {
+        const pid_t pid = pids[i];
+        if (pid <= 0 || pid == currentPid) {
+            continue;
+        }
+
+        int fdBufferSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, nullptr, 0);
+        if (fdBufferSize <= 0) {
+            continue;
+        }
+        std::vector<struct proc_fdinfo> fdInfos(fdBufferSize / sizeof(struct proc_fdinfo) + 1);
+        fdBufferSize = proc_pidinfo(pid, PROC_PIDLISTFDS, 0, fdInfos.data(),
+            static_cast<int>(fdInfos.size() * sizeof(struct proc_fdinfo)));
+        if (fdBufferSize <= 0) {
+            continue;
+        }
+        const int fdCount = fdBufferSize / static_cast<int>(sizeof(struct proc_fdinfo));
+
+        for (int j = 0; j < fdCount; ++j) {
+            if (fdInfos[j].proc_fdtype != PROX_FDTYPE_VNODE) {
+                continue;
+            }
+
+            struct vnode_fdinfowithpath vnodeInfo;
+            const int res = proc_pidfdinfo(pid, fdInfos[j].proc_fd, PROC_PIDFDVNODEPATHINFO, &vnodeInfo, sizeof(vnodeInfo));
+            if (res != sizeof(vnodeInfo)) {
+                continue;
+            }
+
+            const QString target = QString::fromUtf8(vnodeInfo.pvip.vip_path);
+            if (!target.isEmpty() && target.startsWith(path) && !QFileInfo(target).isDir()) {
+                openFiles.insert(target);
+            }
+        }
+    }
+
     return openFiles;
 #else
     (void)path;

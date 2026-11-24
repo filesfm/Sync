@@ -166,7 +166,6 @@ Folder::Folder(const FolderDefinition &definition,
         startVfs();
     }
 
-#ifdef Q_OS_WIN
     _lockWatcherThread = new QThread(this);
     _lockWatcherThread->setObjectName("LockWatcherThread");
     ::LockWatcher* lockWatcher = new ::LockWatcher(this->path());
@@ -246,18 +245,15 @@ Folder::Folder(const FolderDefinition &definition,
             SyncFileItem::LockStatus::UnlockedItem,
             lockOwnerType);
     });
-#endif
 }
 
 Folder::~Folder()
 {
-#ifdef Q_OS_WIN
     if (_lockWatcherThread) {
         _lockWatcherThread->requestInterruption();
         _lockWatcherThread->quit();
         _lockWatcherThread->wait();
     }
-#endif
     // If wipeForRemoval() was called the vfs has already shut down.
     if (_vfs)
         _vfs->stop();

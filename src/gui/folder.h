@@ -592,9 +592,7 @@ private:
     QMetaObject::Connection _officeFileLockReleaseUnlockFailure;
     QMetaObject::Connection _fileLockSuccess;
     QMetaObject::Connection _fileLockFailure;
-#ifdef Q_OS_WIN
     QThread *_lockWatcherThread = nullptr;
-#endif
 };
 }
 
