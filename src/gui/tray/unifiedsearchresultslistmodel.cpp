@@ -28,13 +28,77 @@
 #include <QDesktopServices>
 
 namespace {
-QString imagePlaceholderUrlForProviderId(const QString &providerId, const bool darkMode)
+QString localFileTypeIconNameForFileName(const QString &fileName)
+{
+    static const QHash<QString, QString> extensionToIconName = {
+        {QStringLiteral("txt"), QStringLiteral("text")},
+        {QStringLiteral("jpg"), QStringLiteral("image")},
+        {QStringLiteral("jpeg"), QStringLiteral("image")},
+        {QStringLiteral("png"), QStringLiteral("image")},
+        {QStringLiteral("gif"), QStringLiteral("image")},
+        {QStringLiteral("bmp"), QStringLiteral("image")},
+        {QStringLiteral("webp"), QStringLiteral("image")},
+        {QStringLiteral("tif"), QStringLiteral("image")},
+        {QStringLiteral("tiff"), QStringLiteral("image")},
+        {QStringLiteral("svg"), QStringLiteral("image")},
+        {QStringLiteral("ico"), QStringLiteral("image")},
+        {QStringLiteral("mp3"), QStringLiteral("audio")},
+        {QStringLiteral("wav"), QStringLiteral("audio")},
+        {QStringLiteral("flac"), QStringLiteral("audio")},
+        {QStringLiteral("aac"), QStringLiteral("audio")},
+        {QStringLiteral("ogg"), QStringLiteral("audio")},
+        {QStringLiteral("m4a"), QStringLiteral("audio")},
+        {QStringLiteral("wma"), QStringLiteral("audio")},
+        {QStringLiteral("aiff"), QStringLiteral("audio")},
+        {QStringLiteral("opus"), QStringLiteral("audio")},
+        {QStringLiteral("mp4"), QStringLiteral("video")},
+        {QStringLiteral("mov"), QStringLiteral("video")},
+        {QStringLiteral("avi"), QStringLiteral("video")},
+        {QStringLiteral("mkv"), QStringLiteral("video")},
+        {QStringLiteral("webm"), QStringLiteral("video")},
+        {QStringLiteral("wmv"), QStringLiteral("video")},
+        {QStringLiteral("m4v"), QStringLiteral("video")},
+        {QStringLiteral("mpg"), QStringLiteral("video")},
+        {QStringLiteral("mpeg"), QStringLiteral("video")},
+        {QStringLiteral("doc"), QStringLiteral("x-office-document")},
+        {QStringLiteral("docx"), QStringLiteral("x-office-document")},
+        {QStringLiteral("odt"), QStringLiteral("x-office-document")},
+        {QStringLiteral("rtf"), QStringLiteral("x-office-document")},
+        {QStringLiteral("xls"), QStringLiteral("x-office-document")},
+        {QStringLiteral("xlsx"), QStringLiteral("x-office-document")},
+        {QStringLiteral("ods"), QStringLiteral("x-office-document")},
+        {QStringLiteral("csv"), QStringLiteral("x-office-document")},
+        {QStringLiteral("ppt"), QStringLiteral("x-office-presentation")},
+        {QStringLiteral("pptx"), QStringLiteral("x-office-presentation")},
+        {QStringLiteral("odp"), QStringLiteral("x-office-presentation")},
+        {QStringLiteral("odg"), QStringLiteral("x-office-drawing")},
+        {QStringLiteral("pdf"), QStringLiteral("application-pdf")},
+    };
+
+    auto baseFileName = fileName;
+    if (baseFileName.endsWith(QLatin1String(".filesfm"), Qt::CaseInsensitive)) {
+        baseFileName.chop(8);
+    }
+
+    const auto dotIndex = baseFileName.lastIndexOf(QLatin1Char('.'));
+    if (dotIndex < 0 || dotIndex == baseFileName.size() - 1) {
+        return {};
+    }
+
+    return extensionToIconName.value(baseFileName.mid(dotIndex + 1).toLower());
+}
+
+QString imagePlaceholderUrlForProviderId(const QString &providerId, const QString &title, const bool darkMode)
 {
     const auto colorIconPath = darkMode ? QStringLiteral(":/client/theme/white/") : QStringLiteral(":/client/theme/black/");
     if (providerId.contains(QStringLiteral("message"), Qt::CaseInsensitive)
         || providerId.contains(QStringLiteral("talk"), Qt::CaseInsensitive)) {
         return colorIconPath % QStringLiteral("wizard-talk.svg");
     } else if (providerId.contains(QStringLiteral("file"), Qt::CaseInsensitive)) {
+        const auto fileTypeIconName = localFileTypeIconNameForFileName(title);
+        if (!fileTypeIconName.isEmpty()) {
+            return QStringLiteral(":/client/theme/filetypes/") % fileTypeIconName % QStringLiteral(".svg");
+        }
         return colorIconPath % QStringLiteral("edit.svg");
     } else if (providerId.contains(QStringLiteral("deck"), Qt::CaseInsensitive)) {
         return colorIconPath % QStringLiteral("deck.svg");
@@ -129,6 +193,41 @@ QString generateUrlForThumbnail(const QString &thumbnailUrl, const QUrl &serverU
     return thumbnailUrlCopy;
 }
 
+QString localFileTypeIconPath(const QString &serverRelativeIconPath)
+{
+    static const QStringList knownFileTypeIconNames = {
+        QStringLiteral("file"),
+        QStringLiteral("folder"),
+        QStringLiteral("text"),
+        QStringLiteral("image"),
+        QStringLiteral("audio"),
+        QStringLiteral("video"),
+        QStringLiteral("x-office-document"),
+        QStringLiteral("x-office-drawing"),
+        QStringLiteral("x-office-presentation"),
+        QStringLiteral("application-pdf"),
+    };
+
+    if (!serverRelativeIconPath.contains(QStringLiteral("/filetypes/"))) {
+        return {};
+    }
+
+    auto iconName = serverRelativeIconPath.mid(serverRelativeIconPath.lastIndexOf(QLatin1Char('/')) + 1);
+    const auto querySeparatorIndex = iconName.indexOf(QLatin1Char('?'));
+    if (querySeparatorIndex >= 0) {
+        iconName.truncate(querySeparatorIndex);
+    }
+    if (iconName.endsWith(QStringLiteral(".svg"), Qt::CaseInsensitive)) {
+        iconName.chop(4);
+    }
+
+    if (!knownFileTypeIconNames.contains(iconName)) {
+        return {};
+    }
+
+    return QStringLiteral(":/client/theme/filetypes/") + iconName + QStringLiteral(".svg");
+}
+
 QString generateUrlForIcon(const QString &fallbackIcon, const QUrl &serverUrl, const bool darkMode)
 {
     auto serverUrlCopy = serverUrl;
@@ -136,6 +235,11 @@ QString generateUrlForIcon(const QString &fallbackIcon, const QUrl &serverUrl, c
     auto fallbackIconCopy = fallbackIcon;
 
     if (fallbackIconCopy.startsWith(QLatin1Char('/')) || fallbackIconCopy.startsWith(QLatin1Char('\\'))) {
+        const auto localIconPath = localFileTypeIconPath(fallbackIconCopy);
+        if (!localIconPath.isEmpty()) {
+            return localIconPath;
+        }
+
         // relative image resource URL, just needs some concatenation with current server URL
         // some icons may contain parameters after (?)
         const QStringList fallbackIconPathSplitted =
@@ -211,9 +315,9 @@ QVariant UnifiedSearchResultsListModel::data(const QModelIndex &index, int role)
     case ProviderIdRole: 
         return _results.at(index.row())._providerId;
     case DarkImagePlaceholderRole:
-        return imagePlaceholderUrlForProviderId(_results.at(index.row())._providerId, true);
+        return imagePlaceholderUrlForProviderId(_results.at(index.row())._providerId, _results.at(index.row())._title, true);
     case LightImagePlaceholderRole:
-        return imagePlaceholderUrlForProviderId(_results.at(index.row())._providerId, false);
+        return imagePlaceholderUrlForProviderId(_results.at(index.row())._providerId, _results.at(index.row())._title, false);
     case DarkIconsRole:
         return _results.at(index.row())._darkIcons;
     case LightIconsRole:

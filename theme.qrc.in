@@ -248,5 +248,15 @@
         <file>theme/call-notification.wav</file>
         <file>theme/talk-app.svg</file>
         <file>theme/chevron-double-up.svg</file>
+        <file>theme/filetypes/file.svg</file>
+        <file>theme/filetypes/folder.svg</file>
+        <file>theme/filetypes/text.svg</file>
+        <file>theme/filetypes/image.svg</file>
+        <file>theme/filetypes/audio.svg</file>
+        <file>theme/filetypes/video.svg</file>
+        <file>theme/filetypes/x-office-document.svg</file>
+        <file>theme/filetypes/x-office-drawing.svg</file>
+        <file>theme/filetypes/x-office-presentation.svg</file>
+        <file>theme/filetypes/application-pdf.svg</file>
     </qresource>
 </RCC>
