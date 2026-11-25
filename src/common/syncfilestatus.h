@@ -40,16 +40,20 @@ public:
     void setShared(bool isShared);
     [[nodiscard]] bool shared() const;
 
+    void setLocked(bool isLocked);
+    [[nodiscard]] bool locked() const;
+
     [[nodiscard]] QString toSocketAPIString() const;
 
 private:
     SyncFileStatusTag _tag = StatusNone;
     bool _shared = false;
+    bool _locked = false;
 };
 
 inline bool operator==(const SyncFileStatus &a, const SyncFileStatus &b)
 {
-    return a.tag() == b.tag() && a.shared() == b.shared();
+    return a.tag() == b.tag() && a.shared() == b.shared() && a.locked() == b.locked();
 }
 
 inline bool operator!=(const SyncFileStatus &a, const SyncFileStatus &b)

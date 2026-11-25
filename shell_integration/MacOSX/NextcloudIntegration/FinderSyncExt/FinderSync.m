@@ -42,6 +42,7 @@
         NSImage *sync = [extBundle imageForResource:@"sync.icns"];
         NSImage *warning = [extBundle imageForResource:@"warning.icns"];
         NSImage *error = [extBundle imageForResource:@"error.icns"];
+        NSImage *locked = [extBundle imageForResource:@"locked.icns"];
 
         [syncController setBadgeImage:ok label:@"Up to date" forBadgeIdentifier:@"OK"];
         [syncController setBadgeImage:sync label:@"Synchronizing" forBadgeIdentifier:@"SYNC"];
@@ -53,6 +54,7 @@
         [syncController setBadgeImage:sync label:@"Synchronizing" forBadgeIdentifier:@"NEW+SWM"];
         [syncController setBadgeImage:warning label:@"Ignored" forBadgeIdentifier:@"IGNORE+SWM"];
         [syncController setBadgeImage:error label:@"Error" forBadgeIdentifier:@"ERROR+SWM"];
+        [syncController setBadgeImage:locked label:@"Locked" forBadgeIdentifier:@"LOCKED"];
 
         // The Mach port name needs to:
         // - Be prefixed with the code signing Team ID
@@ -201,7 +203,11 @@
     if (urlForPath == nil) {
         return;
     }
-    [FIFinderSyncController.defaultController setBadgeIdentifier:result forURL:urlForPath];
+    // The server composes lock state as a "+LOCKED" suffix (e.g. "OK+LOCKED") on top of
+    // the regular sync status, but we only register one badge for it - showing that a
+    // file is locked takes priority over showing its sync status.
+    NSString *const badgeIdentifier = [result rangeOfString:@"LOCKED"].location != NSNotFound ? @"LOCKED" : result;
+    [FIFinderSyncController.defaultController setBadgeIdentifier:badgeIdentifier forURL:urlForPath];
 }
 
 - (void)reFetchFileNameCacheForPath:(NSString*)path

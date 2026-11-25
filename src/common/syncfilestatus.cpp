@@ -35,6 +35,16 @@ bool SyncFileStatus::shared() const
     return _shared;
 }
 
+void SyncFileStatus::setLocked(bool isLocked)
+{
+    _locked = isLocked;
+}
+
+bool SyncFileStatus::locked() const
+{
+    return _locked;
+}
+
 QString SyncFileStatus::toSocketAPIString() const
 {
     QString statusString;
@@ -65,6 +75,9 @@ QString SyncFileStatus::toSocketAPIString() const
     }
     if (canBeShared && _shared) {
         statusString += QLatin1String("+SWM");
+    }
+    if (_locked) {
+        statusString += QLatin1String("+LOCKED");
     }
 
     return statusString;

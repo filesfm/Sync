@@ -63,6 +63,7 @@
 		C2B573F51B1DAD6400303B36 /* ok.iconset in Resources */ = {isa = PBXBuildFile; fileRef = C2B573ED1B1DAD6400303B36 /* ok.iconset */; };
 		C2B573F71B1DAD6400303B36 /* sync.iconset in Resources */ = {isa = PBXBuildFile; fileRef = C2B573EF1B1DAD6400303B36 /* sync.iconset */; };
 		C2B573F91B1DAD6400303B36 /* warning.iconset in Resources */ = {isa = PBXBuildFile; fileRef = C2B573F11B1DAD6400303B36 /* warning.iconset */; };
+		BE7EC1535560A0B49CE27033 /* locked.iconset in Resources */ = {isa = PBXBuildFile; fileRef = 7F096BE6595710A06C727471 /* locked.iconset */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -208,6 +209,7 @@
 		C2B573ED1B1DAD6400303B36 /* ok.iconset */ = {isa = PBXFileReference; lastKnownFileType = folder.iconset; name = ok.iconset; path = ../../icons/nopadding/ok.iconset; sourceTree = SOURCE_ROOT; };
 		C2B573EF1B1DAD6400303B36 /* sync.iconset */ = {isa = PBXFileReference; lastKnownFileType = folder.iconset; name = sync.iconset; path = ../../icons/nopadding/sync.iconset; sourceTree = SOURCE_ROOT; };
 		C2B573F11B1DAD6400303B36 /* warning.iconset */ = {isa = PBXFileReference; lastKnownFileType = folder.iconset; name = warning.iconset; path = ../../icons/nopadding/warning.iconset; sourceTree = SOURCE_ROOT; };
+		7F096BE6595710A06C727471 /* locked.iconset */ = {isa = PBXFileReference; lastKnownFileType = folder.iconset; name = locked.iconset; path = ../../icons/nopadding/locked.iconset; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -428,6 +430,7 @@
 				C2B573ED1B1DAD6400303B36 /* ok.iconset */,
 				C2B573EF1B1DAD6400303B36 /* sync.iconset */,
 				C2B573F11B1DAD6400303B36 /* warning.iconset */,
+				7F096BE6595710A06C727471 /* locked.iconset */,
 				C2B573DA1B1CD9CE00303B36 /* Info.plist */,
 				C2B573DB1B1CD9CE00303B36 /* FinderSyncExt.entitlements */,
 			);
@@ -668,6 +671,7 @@
 				C2B573F71B1DAD6400303B36 /* sync.iconset in Resources */,
 				C2B573F41B1DAD6400303B36 /* ok_swm.iconset in Resources */,
 				C2B573F51B1DAD6400303B36 /* ok.iconset in Resources */,
+				BE7EC1535560A0B49CE27033 /* locked.iconset in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

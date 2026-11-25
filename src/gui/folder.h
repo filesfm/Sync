@@ -593,6 +593,7 @@ private:
     QMetaObject::Connection _fileLockSuccess;
     QMetaObject::Connection _fileLockFailure;
     QThread *_lockWatcherThread = nullptr;
+    QSet<QString> _locallyInitiatedLocks;
 };
 }
 

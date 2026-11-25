@@ -39,6 +39,7 @@
 #include "settingsdialog.h"
 #include "vfsdownloaderrordialog.h"
 #include "filesfm/lockwatcher.h"
+#include "systray.h"
 
 #include <QTimer>
 #include <QUrl>
@@ -190,10 +191,35 @@ Folder::Folder(const FolderDefinition &definition,
             return;
         }
 
+        if (rec._lockstate._locked) {
+            // A lock we set ourselves is not a conflict - only warn about locks held by
+            // someone/something else. We track our own locks explicitly, since the server
+            // reports a lock token for Web-held locks too, so its mere presence doesn't tell
+            // us whether it is actually ours.
+            if (_locallyInitiatedLocks.contains(fileRecordPath)) {
+                return;
+            }
+
+            const auto remainingSeconds = QDateTime::currentDateTime().secsTo(QDateTime::fromSecsSinceEpoch(rec._lockstate._lockTimeout));
+            const auto remainingMinutes = remainingSeconds > 0 ? static_cast<int>(remainingSeconds / 60) : 0;
+
+            qCWarning(lcFolder) << "File" << file << "is already locked by" << rec._lockstate._lockOwnerDisplayName
+                                 << "- not claiming the lock ourselves";
+            Systray::instance()->showMessage(tr("File %1 is already locked").arg(QFileInfo(rec.path()).fileName()),
+                rec._lockstate._lockOwnerDisplayName.isEmpty()
+                    ? tr("This file is currently being edited elsewhere. It will remain read-only here for %1 more minute(s).").arg(remainingMinutes)
+                    : tr("This file is currently being edited by %1. It will remain read-only here for %2 more minute(s).")
+                          .arg(rec._lockstate._lockOwnerDisplayName)
+                          .arg(remainingMinutes),
+                QSystemTrayIcon::Warning);
+            return;
+        }
+
         const QString remoteFilePath = remotePathTrailingSlash() + rec.path();
 
-        _fileLockSuccess = connect(_accountState->account().data(), &Account::lockFileSuccess, this, [this, remoteFilePath] {
+        _fileLockSuccess = connect(_accountState->account().data(), &Account::lockFileSuccess, this, [this, remoteFilePath, fileRecordPath] {
             disconnect(_fileLockSuccess);
+            _locallyInitiatedLocks.insert(fileRecordPath);
             qCDebug(lcFolder) << "Locking file succeeded" << remoteFilePath;
             startSync();
         });
@@ -226,9 +252,16 @@ Folder::Folder(const FolderDefinition &definition,
             return;
         }
 
+        if (!_locallyInitiatedLocks.contains(fileRecordPath)) {
+            // We never locked this ourselves (e.g. it is locked by someone else) - do not
+            // release a lock we do not own.
+            return;
+        }
+
         const QString remoteFilePath = remotePathTrailingSlash() + rec.path();
-        _fileLockSuccess = connect(_accountState->account().data(), &Account::lockFileSuccess, this, [this, remoteFilePath]() {
+        _fileLockSuccess = connect(_accountState->account().data(), &Account::lockFileSuccess, this, [this, remoteFilePath, fileRecordPath]() {
             disconnect(_officeFileLockReleaseUnlockSuccess);
+            _locallyInitiatedLocks.remove(fileRecordPath);
             qCDebug(lcFolder) << "Unlocking a file succeeded" << remoteFilePath;
             startSync();
         });

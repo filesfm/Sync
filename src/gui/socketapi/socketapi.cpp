@@ -643,6 +643,11 @@ void SocketApi::processLeaveShareRequest(const QString &localFile, SocketListene
 
 void SocketApi::broadcastStatusPushMessage(const QString &systemPath, SyncFileStatus fileStatus)
 {
+    const auto fileData = FileData::get(systemPath);
+    if (fileData.folder) {
+        fileStatus.setLocked(fileData.journalRecord()._lockstate._locked);
+    }
+
     QString msg = buildMessage(QLatin1String("STATUS"), systemPath, fileStatus.toSocketAPIString());
     Q_ASSERT(!systemPath.endsWith('/'));
     uint directoryHash = qHash(systemPath.left(systemPath.lastIndexOf('/')));
@@ -672,6 +677,7 @@ void SocketApi::command_RETRIEVE_FILE_STATUS(const QString &argument, SocketList
         listener->registerMonitoredDirectory(qHash(directory));
 
         SyncFileStatus fileStatus = fileData.syncFileStatus();
+        fileStatus.setLocked(fileData.journalRecord()._lockstate._locked);
         statusString = fileStatus.toSocketAPIString();
     }
 

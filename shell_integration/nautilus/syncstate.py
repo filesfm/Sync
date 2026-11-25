@@ -441,6 +441,10 @@ class SyncStateExtension_Nextcloud(GObject.GObject, Nautilus.InfoProvider):
                     'NOP'       : ''
                   }
 
+        if 'LOCKED' in state:
+            item.add_emblem(appname + '_locked')
+            return
+
         emblem = 'NOP' # Show nothing if no emblem is defined.
         if state in Emblems:
             emblem = Emblems[state]
