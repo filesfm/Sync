@@ -16,7 +16,7 @@ set( APPLICATION_CONFIG_NAME "${APPLICATION_EXECUTABLE}" )
 set( APPLICATION_DOMAIN     "files.fm" )
 set( APPLICATION_VENDOR     "Files.fm SIA" )
 set( APPLICATION_UPDATE_URL "https://files.fm/sync-share#setup" CACHE STRING "URL for updater" )
-set( APPLICATION_HELP_URL   "" CACHE STRING "URL for the help menu" )
+set( APPLICATION_HELP_URL   "https://failiem.lv/contacts" CACHE STRING "URL for the help menu" )
 
 if(APPLE AND APPLICATION_NAME STREQUAL "Nextcloud" AND EXISTS "${CMAKE_SOURCE_DIR}/theme/colored/Nextcloud-macOS-icon.svg")
     set( APPLICATION_ICON_NAME "Nextcloud-macOS" )
