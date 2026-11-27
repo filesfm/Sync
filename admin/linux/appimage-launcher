@@ -11,9 +11,15 @@ readonly APPIMAGE_FILE="$(basename "${APPIMAGE}")"
 # Qt install, if any. With the plugin path restored, Qt's own platform
 # auto-detection already prefers wayland when WAYLAND_DISPLAY is set,
 # falling back to xcb otherwise -- no need to force QT_QPA_PLATFORM.
-export LD_LIBRARY_PATH="${USR_DIR}/lib:${LD_LIBRARY_PATH}"
-export QT_PLUGIN_PATH="${USR_DIR}/plugins"
-export QML2_IMPORT_PATH="${USR_DIR}/qml:${QML2_IMPORT_PATH}"
+#
+# These are intentionally NOT exported: every host tool this script shells
+# out to below (update-mime-database, xdg-mime, nautilus, gio, ...) would
+# otherwise pick up our bundled libs instead of its own and fail with
+# "symbol lookup error". They're passed explicitly only to the two
+# invocations of our own binary further down, which do need them.
+readonly SYNC_LD_LIBRARY_PATH="${USR_DIR}/lib:${LD_LIBRARY_PATH}"
+readonly SYNC_QT_PLUGIN_PATH="${USR_DIR}/plugins"
+readonly SYNC_QML2_IMPORT_PATH="${USR_DIR}/qml:${QML2_IMPORT_PATH}"
 
 mkdir -p ~/.local/share/bash-completion/completions
 if [[ ! -e "${HOME}/.local/share/bash-completion/completions/${APPIMAGE_FILE}" ]]; then
@@ -34,7 +40,8 @@ if [[ ${#@} -ne 0 ]]; then
 		kill "${@:2:$#-2}" # pids
 		rm "$3"   # AppImage absolute pathname
 	else
-		"${BIN_DIR}/files_fm_synccmd" $*
+		LD_LIBRARY_PATH="${SYNC_LD_LIBRARY_PATH}" QT_PLUGIN_PATH="${SYNC_QT_PLUGIN_PATH}" QML2_IMPORT_PATH="${SYNC_QML2_IMPORT_PATH}" \
+			"${BIN_DIR}/files_fm_synccmd" $*
 		exit
 	fi
 fi
@@ -141,4 +148,5 @@ for config_entry in $(grep 'localPath=' ~/.config/Files.fm\ Sync\ 2027/files_fm_
 done
 
 systemctl --user set-environment XDG_DATA_DIRS="$HOME/.local/share:$XDG_DATA_DIRS"
-"${BIN_DIR}/files_fm_sync"
+LD_LIBRARY_PATH="${SYNC_LD_LIBRARY_PATH}" QT_PLUGIN_PATH="${SYNC_QT_PLUGIN_PATH}" QML2_IMPORT_PATH="${SYNC_QML2_IMPORT_PATH}" \
+	"${BIN_DIR}/files_fm_sync"

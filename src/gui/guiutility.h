@@ -24,6 +24,35 @@
 namespace OCC {
 namespace Utility {
 
+    /** RAII guard that scrubs LD_LIBRARY_PATH/QT_PLUGIN_PATH/QML2_IMPORT_PATH for its lifetime on Linux.
+     *
+     * Wrap any QProcess start or fork+exec of a host executable (file manager, xdg-open, ...) in
+     * one of these: an AppImage build needs those vars for itself, but a host process that
+     * inherits them tries to load our bundled libs instead of its own and fails with "symbol
+     * lookup error". Restores the vars on scope exit. Thread-safe (serializes via a shared
+     * mutex), since mutating process environment variables concurrently is not otherwise safe.
+     */
+    class ScopedHostEnvironment
+    {
+    public:
+        ScopedHostEnvironment();
+        ~ScopedHostEnvironment();
+
+        ScopedHostEnvironment(const ScopedHostEnvironment &) = delete;
+        ScopedHostEnvironment &operator=(const ScopedHostEnvironment &) = delete;
+
+    private:
+        class Private;
+        Private *_d;
+    };
+
+    /** Open a url or local path with the user's preferred handler (browser, file manager, ...).
+     *
+     * Drop-in replacement for QDesktopServices::openUrl(): uses ScopedHostEnvironment so Linux
+     * AppImage builds don't break the opener (see its documentation).
+     */
+    bool openUrlSafely(const QUrl &url);
+
     /** Open an url in the browser.
      *
      * If launching the browser fails, display a message.

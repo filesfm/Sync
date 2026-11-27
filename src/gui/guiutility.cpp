@@ -17,14 +17,75 @@
 #include <QClipboard>
 #include <QApplication>
 #include <QDesktopServices>
+#include <QHash>
 #include <QLoggingCategory>
 #include <QMessageBox>
+#include <QMutex>
+#include <QMutexLocker>
 #include <QUrlQuery>
 
 #include "common/asserts.h"
 using namespace OCC;
 
 Q_LOGGING_CATEGORY(lcUtility, "nextcloud.gui.utility", QtInfoMsg)
+
+class Utility::ScopedHostEnvironment::Private
+{
+public:
+#ifdef Q_OS_LINUX
+    QMutexLocker<QMutex> locker;
+    QHash<QByteArray, QByteArray> savedVars;
+    explicit Private(QMutex &mutex)
+        : locker(&mutex)
+    {
+    }
+#endif
+};
+
+namespace {
+// This can be locked from multiple threads (e.g. EditLocallyJob runs openUrlSafely() via
+// QtConcurrent::run()), and mutating process environment variables concurrently is not
+// thread-safe, so every ScopedHostEnvironment serializes on this.
+QMutex hostEnvironmentMutex;
+}
+
+Utility::ScopedHostEnvironment::ScopedHostEnvironment()
+#ifdef Q_OS_LINUX
+    : _d(new Private(hostEnvironmentMutex))
+#else
+    : _d(nullptr)
+#endif
+{
+#ifdef Q_OS_LINUX
+    static const char *const pollutedVars[] = {"LD_LIBRARY_PATH", "QT_PLUGIN_PATH", "QML2_IMPORT_PATH"};
+    for (const auto *name : pollutedVars) {
+        if (qEnvironmentVariableIsSet(name)) {
+            _d->savedVars.insert(name, qgetenv(name));
+            qunsetenv(name);
+        }
+    }
+#endif
+}
+
+Utility::ScopedHostEnvironment::~ScopedHostEnvironment()
+{
+#ifdef Q_OS_LINUX
+    for (auto it = _d->savedVars.constBegin(); it != _d->savedVars.constEnd(); ++it) {
+        qputenv(it.key().constData(), it.value());
+    }
+    delete _d;
+#endif
+}
+
+bool Utility::openUrlSafely(const QUrl &url)
+{
+    // See ScopedHostEnvironment's documentation: an AppImage build needs
+    // LD_LIBRARY_PATH/QT_PLUGIN_PATH/QML2_IMPORT_PATH for itself, but QDesktopServices::openUrl()
+    // forks+execs xdg-open synchronously on Linux (when no desktop portal is in use), which must
+    // not inherit them.
+    ScopedHostEnvironment hostEnv;
+    return QDesktopServices::openUrl(url);
+}
 
 bool Utility::openBrowser(const QUrl &url, QWidget *errorWidgetParent)
 {
@@ -38,7 +99,7 @@ bool Utility::openBrowser(const QUrl &url, QWidget *errorWidgetParent)
         return false;
     }
 
-    if (!QDesktopServices::openUrl(url)) {
+    if (!openUrlSafely(url)) {
         if (errorWidgetParent) {
             QMessageBox::warning(
                 errorWidgetParent,
@@ -62,7 +123,7 @@ bool Utility::openEmailComposer(const QString &subject, const QString &body, QWi
         { QLatin1String("body"), body } });
     url.setQuery(query);
 
-    if (!QDesktopServices::openUrl(url)) {
+    if (!openUrlSafely(url)) {
         if (errorWidgetParent) {
             QMessageBox::warning(
                 errorWidgetParent,

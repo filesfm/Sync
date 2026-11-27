@@ -19,7 +19,6 @@
 #include "tray/talkreply.h"
 #include "userstatusconnector.h"
 
-#include <QDesktopServices>
 #include <QIcon>
 #include <QMessageBox>
 #include <QSvgRenderer>
@@ -989,7 +988,7 @@ UnifiedSearchResultsListModel *User::getUnifiedSearchResultsListModel() const
 void User::openLocalFolder() const
 {
     if (const auto folder = getFolder()) {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(folder->path()));
+        Utility::openUrlSafely(QUrl::fromLocalFile(folder->path()));
     }
 }
 
@@ -1011,7 +1010,7 @@ void User::openFolderLocallyOrInBrowser(const QString &fullRemotePath)
     if (folder->journalDb()->getFileRecord(fullRemotePathToPathInDb, &rec) && rec.isValid()) {
         // found folder locally, going to open
         qCInfo(lcActivity) << "Opening locally a folder" << fullRemotePath;
-        QDesktopServices::openUrl(QUrl::fromLocalFile(folder->path() + rec.path()));
+        Utility::openUrlSafely(QUrl::fromLocalFile(folder->path() + rec.path()));
         return;
     }
 
@@ -1428,7 +1427,12 @@ void UserModel::openCurrentAccountServer()
 {
     QString url = QString("https://files.fm/filebrowser");
 
-    QDesktopServices::openUrl(url);
+    Utility::openUrlSafely(url);
+}
+
+void UserModel::openUrlExternally(const QUrl &url)
+{
+    Utility::openUrlSafely(url);
 }
 
 void UserModel::openCurrentAccountFolderFromTrayInfo(const QString &fullRemotePath)
@@ -1454,7 +1458,7 @@ void UserModel::openCurrentAccountFeaturedApp()
     if (currentUser()->isNcAssistantEnabled()) {
         auto serverUrl = currentUser()->server(false);
         const auto assistanceUrl = serverUrl.append("/apps/assistant/");
-        QDesktopServices::openUrl(QUrl::fromUserInput(assistanceUrl));
+        Utility::openUrlSafely(QUrl::fromUserInput(assistanceUrl));
         return;
     }
 

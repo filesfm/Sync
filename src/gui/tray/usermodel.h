@@ -262,6 +262,7 @@ public slots:
     void openCurrentAccountServer();
     void openCurrentAccountFolderFromTrayInfo(const QString &fullRemotePath);
     void openCurrentAccountFeaturedApp();
+    void openUrlExternally(const QUrl &url);
     void setCurrentUserId(const int id);
     void login(const int id);
     void logout(const int id);

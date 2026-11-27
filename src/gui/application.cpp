@@ -27,6 +27,7 @@
 #include "connectionvalidator.h"
 #include "folder.h"
 #include "folderman.h"
+#include "guiutility.h"
 #include "logger.h"
 #include "configfile.h"
 #include "socketapi/socketapi.h"
@@ -64,7 +65,6 @@
 #include <QTranslator>
 #include <QMenu>
 #include <QMessageBox>
-#include <QDesktopServices>
 #include <QGuiApplication>
 #include <QUrlQuery>
 #include <QVersionNumber>
@@ -1100,7 +1100,7 @@ void Application::openVirtualFile(const QString &filename)
     *con = connect(folder, &Folder::syncFinished, folder, [folder, con, normalName] {
         folder->disconnect(*con);
         if (QFile::exists(normalName)) {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(normalName));
+            Utility::openUrlSafely(QUrl::fromLocalFile(normalName));
         }
     });
 }

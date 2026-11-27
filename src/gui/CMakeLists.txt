@@ -675,7 +675,10 @@ endif()
 
 IF(BUILD_UPDATER)
     add_library(updater STATIC ${updater_SRCS})
-    target_link_libraries(updater Nextcloud::sync ${updater_DEPS} Qt::Widgets Qt::Svg Qt::Network Qt::Xml)
+    # Circular with the target_link_libraries(nextcloudCore PUBLIC updater) below: ocupdater.cpp
+    # calls Utility::openUrlSafely(), which lives in nextcloudCore's guiutility.cpp. CMake repeats
+    # both static libraries in the link line to resolve the cycle.
+    target_link_libraries(updater Nextcloud::sync nextcloudCore ${updater_DEPS} Qt::Widgets Qt::Svg Qt::Network Qt::Xml)
     target_include_directories(updater PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
     set_target_properties(updater PROPERTIES AUTOMOC ON)
     target_link_libraries(nextcloudCore PUBLIC updater)

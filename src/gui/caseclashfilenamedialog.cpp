@@ -19,6 +19,7 @@
 
 #include "account.h"
 #include "folder.h"
+#include "guiutility.h"
 #include "common/filesystembase.h"
 
 #include <QPushButton>
@@ -28,7 +29,6 @@
 #include <QFileInfo>
 #include <QPushButton>
 #include <QDirIterator>
-#include <QDesktopServices>
 #include <QLoggingCategory>
 
 #include <array>
@@ -128,10 +128,10 @@ CaseClashFilenameDialog::CaseClashFilenameDialog(AccountPtr account,
     connect(_ui->buttonBox, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(_ui->buttonBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(_ui->localVersionButton, &QToolButton::clicked, this, [preexistingConflictingFile] {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(preexistingConflictingFile));
+        Utility::openUrlSafely(QUrl::fromLocalFile(preexistingConflictingFile));
     });
     connect(_ui->remoteVersionButton, &QToolButton::clicked, this, [conflictTaggedPath] {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(conflictTaggedPath));
+        Utility::openUrlSafely(QUrl::fromLocalFile(conflictTaggedPath));
     });
 
     _ui->errorLabel->setText({}/*

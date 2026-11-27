@@ -27,9 +27,9 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include <QAction>
-#include <QDesktopServices>
 
 #include "configfile.h"
+#include "guiutility.h"
 #include "logger.h"
 
 namespace OCC {
@@ -78,7 +78,7 @@ LogBrowser::LogBrowser(QWidget *parent)
     connect(openFolderButton, &QPushButton::clicked, this, []() {
         QString path = Logger::instance()->temporaryFolderLogDirPath();
         QDir().mkpath(path);
-        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        Utility::openUrlSafely(QUrl::fromLocalFile(path));
     });
     mainLayout->addWidget(openFolderButton);
 

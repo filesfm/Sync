@@ -15,6 +15,7 @@
 #include "theme.h"
 #include "configfile.h"
 #include "common/utility.h"
+#include "guiutility.h"
 #include "accessmanager.h"
 
 #include "updater/ocupdater.h"
@@ -243,7 +244,7 @@ void OCUpdater::checkForUpdate()
 
 void OCUpdater::slotOpenUpdateUrl()
 {
-    QDesktopServices::openUrl(_updateInfo.web());
+    Utility::openUrlSafely(_updateInfo.web());
 }
 
 bool OCUpdater::updateSucceeded() const

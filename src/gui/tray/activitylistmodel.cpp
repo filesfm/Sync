@@ -28,7 +28,6 @@
 
 #include <QtCore>
 #include <QAbstractListModel>
-#include <QDesktopServices>
 #include <QWidget>
 #include <QJsonObject>
 #include <QJsonDocument>
@@ -739,7 +738,7 @@ void ActivityListModel::slotTriggerDefaultAction(const int activityIndex)
         const QFileInfo fileInfo(path);
         if (fileInfo.isDir()) {
             // Open the directory in the file manager
-            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+            Utility::openUrlSafely(QUrl::fromLocalFile(path));
         } else {
             // Open the file in the file manager and select it
             QProcess::startDetached("explorer.exe", {"/select,", QDir::toNativeSeparators(path)});

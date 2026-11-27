@@ -16,10 +16,10 @@
 #include "ui_conflictdialog.h"
 
 #include "conflictsolver.h"
+#include "guiutility.h"
 
 #include <QDateTime>
 #include <QDebug>
-#include <QDesktopServices>
 #include <QFileInfo>
 #include <QMimeDatabase>
 #include <QPushButton>
@@ -57,12 +57,12 @@ ConflictDialog::ConflictDialog(QWidget *parent)
 
     connect(_ui->localVersionRadio, &QCheckBox::toggled, this, &ConflictDialog::updateButtonStates);
     connect(_ui->localVersionButton, &QToolButton::clicked, this, [=] {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(_solver->localVersionFilename()));
+        Utility::openUrlSafely(QUrl::fromLocalFile(_solver->localVersionFilename()));
     });
 
     connect(_ui->remoteVersionRadio, &QCheckBox::toggled, this, &ConflictDialog::updateButtonStates);
     connect(_ui->remoteVersionButton, &QToolButton::clicked, this, [=] {
-        QDesktopServices::openUrl(QUrl::fromLocalFile(_solver->remoteVersionFilename()));
+        Utility::openUrlSafely(QUrl::fromLocalFile(_solver->remoteVersionFilename()));
     });
 
     connect(_solver, &ConflictSolver::localVersionFilenameChanged, this, &ConflictDialog::updateWidgets);

@@ -495,7 +495,7 @@ ApplicationWindow {
             activeFocusOnTab: true
             initialSyncInProgress: syncStatus.model.initialSyncInProgress
             model: activityModel
-            onOpenFile: Qt.openUrlExternally(filePath);
+            onOpenFile: UserModel.openUrlExternally(filePath);
             onActivityItemClicked: {
                 model.slotTriggerDefaultAction(index)
             }

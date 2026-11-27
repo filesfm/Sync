@@ -19,6 +19,7 @@ import QtQuick.Layouts
 import Qt5Compat.GraphicalEffects
 
 import Style
+import com.nextcloud.desktopclient
 
 RowLayout {
     id: unifiedSearchResultItemDetails
@@ -192,7 +193,7 @@ RowLayout {
 
         onClicked: {
             if (unifiedSearchResultItemDetails.resourceUrl !== "") {
-                Qt.openUrlExternally(unifiedSearchResultItemDetails.resourceUrl)
+                UserModel.openUrlExternally(unifiedSearchResultItemDetails.resourceUrl)
             }
         }
         ToolTip.text: "Open in web"

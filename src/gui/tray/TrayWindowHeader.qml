@@ -164,7 +164,7 @@ Rectangle {
             Layout.preferredWidth: Style.trayWindowHeaderHeight
             Layout.fillHeight: true
 
-            onClicked: Qt.openUrlExternally("https://chat.files.fm")
+            onClicked: UserModel.openUrlExternally("https://chat.files.fm")
 
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("AI Chat")

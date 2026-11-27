@@ -22,7 +22,7 @@
 #include <account.h>
 #include <folder.h>
 #include <accountstate.h>
-#include <QDesktopServices>
+#include "guiutility.h"
 #include "openfilemanager.h"
 #include "owncloudgui.h"
 #include "application.h"
@@ -277,7 +277,7 @@ activate_action_open (GSimpleAction *action, GVariant *parameter, gpointer user_
     }
 
     if(g_str_equal(name, "openwebsite")) {
-        QDesktopServices::openUrl(self->folder()->accountState()->account()->url());
+        Utility::openUrlSafely(self->folder()->accountState()->account()->url());
     }
 
     if(g_str_equal(name, "openfolder")) {
@@ -305,7 +305,7 @@ activate_action_openrecentfile (GSimpleAction *action, GVariant *parameter, gpoi
     Q_UNUSED(action);
     Q_UNUSED(parameter);
     auto *self = static_cast<CloudProviderWrapper*>(user_data);
-    QDesktopServices::openUrl(self->folder()->accountState()->account()->url());
+    Utility::openUrlSafely(self->folder()->accountState()->account()->url());
 }
 
 static void

@@ -47,7 +47,6 @@
 
 #include <cmath>
 
-#include <QDesktopServices>
 #include <QDialogButtonBox>
 #include <QDir>
 #include <QListWidgetItem>
@@ -921,7 +920,7 @@ void AccountSettings::slotOpenCurrentLocalSubFolder()
     }
     const auto fileName = _model->data(selected, FolderStatusDelegate::FolderPathRole).toString();
     const auto url = QUrl::fromLocalFile(fileName);
-    QDesktopServices::openUrl(url);
+    Utility::openUrlSafely(url);
 }
 
 void AccountSettings::slotEnableVfsCurrentFolder()

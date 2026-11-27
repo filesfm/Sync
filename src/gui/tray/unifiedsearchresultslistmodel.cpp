@@ -25,7 +25,6 @@
 #include <algorithm>
 
 #include <QAbstractListModel>
-#include <QDesktopServices>
 
 namespace {
 QString localFileTypeIconNameForFileName(const QString &fileName)
@@ -470,7 +469,7 @@ void UnifiedSearchResultsListModel::resultClicked(const QString &remotePath) con
     const QString localFullPath = resolveLocalFullPathForRemote(remotePath, _accountState);
     if (!localFullPath.isEmpty()) {
         qCInfo(lcUnifiedSearch) << "Opening file:" << localFullPath;
-        QDesktopServices::openUrl(QUrl::fromLocalFile(localFullPath));
+        Utility::openUrlSafely(QUrl::fromLocalFile(localFullPath));
         return;
     }
 }

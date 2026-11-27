@@ -14,12 +14,12 @@
  */
 
 #include "openfilemanager.h"
+#include "guiutility.h"
 #include "common/utility.h"
 #include <QProcess>
 #include <QSettings>
 #include <QDir>
 #include <QUrl>
-#include <QDesktopServices>
 #include <QApplication>
 #include <QOperatingSystemVersion>
 
@@ -126,6 +126,11 @@ void showInFileManager(const QString &localPath)
                    << QLatin1String("tell application \"Finder\" to activate");
         QProcess::execute(QLatin1String("/usr/bin/osascript"), scriptArgs);
     } else {
+        // findDefaultFileManager(), checkDolphinCanSelect() and QProcess::startDetached() below
+        // all spawn host executables; see ScopedHostEnvironment's documentation for why they
+        // must not inherit our AppImage's LD_LIBRARY_PATH/QT_PLUGIN_PATH/QML2_IMPORT_PATH.
+        const Utility::ScopedHostEnvironment hostEnv;
+
         QString app;
         QStringList args;
 
@@ -189,7 +194,7 @@ void showInFileManager(const QString &localPath)
 
         if (app.isEmpty() || args.isEmpty() || !canHandleFile) {
             // fall back: open the default file manager, without ever selecting the file
-            QDesktopServices::openUrl(QUrl::fromLocalFile(pathToOpen));
+            Utility::openUrlSafely(QUrl::fromLocalFile(pathToOpen));
         } else {
             QProcess::startDetached(app, args);
         }

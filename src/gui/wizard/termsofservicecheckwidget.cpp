@@ -17,11 +17,11 @@
 #include "wizard/owncloudwizardcommon.h"
 #include "theme.h"
 #include "configfile.h"
+#include "guiutility.h"
 
 #include "QProgressIndicator.h"
 
 #include <QClipboard>
-#include <QDesktopServices>
 
 namespace OCC {
 
@@ -112,7 +112,7 @@ void TermsOfServiceCheckWidget::slotPollTimerTimeout()
 
 void TermsOfServiceCheckWidget::slotOpenBrowser()
 {
-    QDesktopServices::openUrl(_url);
+    Utility::openUrlSafely(_url);
 }
 
 void TermsOfServiceCheckWidget::slotCopyLinkToClipboard()

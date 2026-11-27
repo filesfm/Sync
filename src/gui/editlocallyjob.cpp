@@ -15,12 +15,12 @@
 #include "editlocallyjob.h"
 
 #include <QMessageBox>
-#include <QDesktopServices>
 #include <QtConcurrent>
 
 #include "editlocallymanager.h"
 #include "folder.h"
 #include "folderman.h"
+#include "guiutility.h"
 #include "syncengine.h"
 #include "systray.h"
 
@@ -437,11 +437,11 @@ void EditLocallyJob::openFile()
     }
 
     const auto localFilePathUrl = QUrl::fromLocalFile(_localFilePath);
-    // In case the VFS mode is enabled and a file is not yet hydrated, we must call QDesktopServices::openUrl
+    // In case the VFS mode is enabled and a file is not yet hydrated, we must call Utility::openUrlSafely
     // from a separate thread, or, there will be a freeze. To avoid searching for a specific folder and checking
     // if the VFS is enabled - we just always call it from a separate thread.
     auto futureResult = QtConcurrent::run([localFilePathUrl, this]() {
-        if (!QDesktopServices::openUrl(localFilePathUrl)) {
+        if (!Utility::openUrlSafely(localFilePathUrl)) {
             emit callShowError(tr("Could not open %1").arg(_fileName), tr("Please try again."));
         }
 

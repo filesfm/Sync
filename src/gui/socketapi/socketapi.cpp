@@ -68,7 +68,6 @@
 #include <QJsonObject>
 #include <QWidget>
 
-#include <QDesktopServices>
 
 #include <QProcess>
 #include <QStandardPaths>
@@ -914,7 +913,7 @@ void SocketApi::command_COPYASPATH(const QString &localFile, SocketListener *)
 
 void SocketApi::command_OPENNEWWINDOW(const QString &localFile, SocketListener *)
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(localFile));
+    Utility::openUrlSafely(QUrl::fromLocalFile(localFile));
 }
 
 void SocketApi::command_OPEN(const QString &localFile, SocketListener *socketListener)

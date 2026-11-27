@@ -48,7 +48,6 @@
 #endif
 
 #include <QQmlApplicationEngine>
-#include <QDesktopServices>
 #include <QDir>
 #include <QMessageBox>
 #include <QSignalMapper>
@@ -285,7 +284,7 @@ void ownCloudGui::slotNeedToAcceptTermsOfService(const OCC::AccountPtr &account,
             tr("Your account %1 requires you to accept the terms of service of your server. "
                "You will be redirected to %2 to acknowledge that you have read it and agrees with it.")
                 .arg(account->displayName(), account->url().toString()));
-        QDesktopServices::openUrl(account->url());
+        Utility::openUrlSafely(account->url());
     }
 }
 
@@ -514,7 +513,7 @@ void ownCloudGui::slotFolderOpenAction(const QString &alias)
         else
             url = QUrl::fromLocalFile(filePath);
 #endif
-        QDesktopServices::openUrl(url);
+        Utility::openUrlSafely(url);
     }
 }
 
@@ -676,7 +675,7 @@ void ownCloudGui::slotOpenOwnCloud()
 
 void ownCloudGui::slotHelp()
 {
-    QDesktopServices::openUrl(QUrl(Theme::instance()->helpUrl()));
+    Utility::openUrlSafely(QUrl(Theme::instance()->helpUrl()));
 }
 
 void ownCloudGui::raiseDialog(QWidget *raiseWidget)
