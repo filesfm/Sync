@@ -19,6 +19,7 @@
 #include "updater/updater.h"
 #include "updater/sparkleupdater.h"
 #include "updater/ocupdater.h"
+#include "updater/appimageupdater.h"
 
 #include "theme.h"
 #include "common/utility.h"
@@ -74,6 +75,9 @@ QUrl Updater::updateUrl()
 #endif
 #if defined(Q_OS_WIN)
     urlQuery.addQueryItem(QLatin1String("msi"), QLatin1String("true"));
+#endif
+#if defined(Q_OS_LINUX) && defined(BUILD_APPIMAGE_UPDATER)
+    urlQuery.addQueryItem(QLatin1String("appimage"), QLatin1String("true"));
 #endif
 
     updateBaseUrl.setQuery(urlQuery);
@@ -148,6 +152,8 @@ Updater *Updater::create()
 #elif defined(Q_OS_WIN32)
     // Also for MSI
     return new NSISUpdater(url);
+#elif defined(Q_OS_LINUX) && defined(BUILD_APPIMAGE_UPDATER)
+    return new AppImageUpdater(url);
 #else
     // the best we can do is notify about updates
     return new PassiveUpdateNotifier(url);

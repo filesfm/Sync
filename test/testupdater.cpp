@@ -13,6 +13,7 @@
 #include "common/filesystembase.h"
 #include "updater/updater.h"
 #include "updater/ocupdater.h"
+#include "updater/appimageupdater.h"
 #include "configfile.h"
 #include "logger.h"
 #include "filesystem.h"
@@ -185,6 +186,134 @@ private Q_SLOTS:
         const auto updateContents = updateFile.readAll();
         updateFile.close();
         QCOMPARE(updateContents, "This would be the installer"_ba);
+    }
+
+    void testAppImageUpdaterDownloadAndVerify()
+    {
+        QTemporaryDir tempDir;
+        QVERIFY(tempDir.isValid());
+        ConfigFile::setConfDir(tempDir.path());
+
+        const auto runningAppImage = FileSystem::joinPath(tempDir.path(), "files_fm_sync-1.0.0.AppImage"_L1);
+        QFile(runningAppImage).open(QIODevice::WriteOnly);
+        qputenv("APPIMAGE", runningAppImage.toLocal8Bit());
+
+        const auto payload = QByteArray("\x7f" "ELFtestpayload"_ba);
+
+        QHttpServer httpServer;
+        httpServer.route("/updateinfo.xml"_L1, [&](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
+            auto downloadTarget = request.url();
+            downloadTarget.setPath("/payload"_L1);
+            const auto xml = "<?xml version=\"1.0\"?>\n<owncloudclient><version>600.0.0</version><versionstring>600.0.0</versionstring><downloadurl>%1</downloadurl></owncloudclient>"_L1
+                                  .arg(QString::fromLatin1(downloadTarget.toEncoded()))
+                                  .toUtf8();
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "application/xml"_ba);
+            responder.write(xml, headers);
+        });
+        httpServer.route("/payload"_L1, [&](QHttpServerResponder &responder) -> void {
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "application/octet-stream"_ba);
+            responder.write(payload, headers);
+        });
+
+        QTcpServer tcpServer;
+        QVERIFY(tcpServer.listen(QHostAddress::LocalHost));
+        QVERIFY(httpServer.bind(&tcpServer));
+        const QString baseUrl = "http://%1:%2"_L1.arg(tcpServer.serverAddress().toString(), QString::number(tcpServer.serverPort()));
+
+        AppImageUpdater updater(QUrl("%1/updateinfo.xml"_L1.arg(baseUrl)));
+        updater.checkForUpdate();
+        QTRY_COMPARE(updater.downloadState(), int(OCUpdater::DownloadComplete));
+
+        const auto expectedTarget = FileSystem::joinPath(tempDir.path(), "files_fm_sync-600.0.0.AppImage"_L1);
+        QVERIFY(QFileInfo::exists(expectedTarget));
+        QVERIFY(QFileInfo(expectedTarget).isExecutable());
+
+        QFile updateFile(expectedTarget);
+        QVERIFY(updateFile.open(QIODevice::ReadOnly));
+        QCOMPARE(updateFile.readAll(), payload);
+        updateFile.close();
+
+        ConfigFile cfg;
+        QSettings settings(cfg.configFile(), QSettings::IniFormat);
+        QCOMPARE(settings.value("Updater/updateAvailable"_L1).toString(), expectedTarget);
+
+        qunsetenv("APPIMAGE");
+    }
+
+    void testAppImageUpdaterRejectsNonElfPayload()
+    {
+        QTemporaryDir tempDir;
+        QVERIFY(tempDir.isValid());
+        ConfigFile::setConfDir(tempDir.path());
+
+        const auto runningAppImage = FileSystem::joinPath(tempDir.path(), "files_fm_sync-1.0.0.AppImage"_L1);
+        QFile(runningAppImage).open(QIODevice::WriteOnly);
+        qputenv("APPIMAGE", runningAppImage.toLocal8Bit());
+
+        const auto payload = "<html>not an appimage</html>"_ba;
+
+        QHttpServer httpServer;
+        httpServer.route("/updateinfo.xml"_L1, [&](const QHttpServerRequest &request, QHttpServerResponder &responder) -> void {
+            auto downloadTarget = request.url();
+            downloadTarget.setPath("/payload"_L1);
+            const auto xml = "<?xml version=\"1.0\"?>\n<owncloudclient><version>600.0.0</version><versionstring>600.0.0</versionstring><downloadurl>%1</downloadurl></owncloudclient>"_L1
+                                  .arg(QString::fromLatin1(downloadTarget.toEncoded()))
+                                  .toUtf8();
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "application/xml"_ba);
+            responder.write(xml, headers);
+        });
+        httpServer.route("/payload"_L1, [&](QHttpServerResponder &responder) -> void {
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "text/html"_ba);
+            responder.write(payload, headers);
+        });
+
+        QTcpServer tcpServer;
+        QVERIFY(tcpServer.listen(QHostAddress::LocalHost));
+        QVERIFY(httpServer.bind(&tcpServer));
+        const QString baseUrl = "http://%1:%2"_L1.arg(tcpServer.serverAddress().toString(), QString::number(tcpServer.serverPort()));
+
+        AppImageUpdater updater(QUrl("%1/updateinfo.xml"_L1.arg(baseUrl)));
+        updater.checkForUpdate();
+        QTRY_COMPARE(updater.downloadState(), int(OCUpdater::DownloadFailed));
+
+        const auto rejectedTarget = FileSystem::joinPath(tempDir.path(), "files_fm_sync-600.0.0.AppImage"_L1);
+        QVERIFY(!QFileInfo::exists(rejectedTarget));
+
+        qunsetenv("APPIMAGE");
+    }
+
+    void testAppImageUpdaterRejectsMalformedVersion()
+    {
+        QTemporaryDir tempDir;
+        QVERIFY(tempDir.isValid());
+        ConfigFile::setConfDir(tempDir.path());
+
+        const auto runningAppImage = FileSystem::joinPath(tempDir.path(), "files_fm_sync-1.0.0.AppImage"_L1);
+        QFile(runningAppImage).open(QIODevice::WriteOnly);
+        qputenv("APPIMAGE", runningAppImage.toLocal8Bit());
+
+        QHttpServer httpServer;
+        httpServer.route("/updateinfo.xml"_L1, [](const QHttpServerRequest &, QHttpServerResponder &responder) -> void {
+            const auto xml = "<?xml version=\"1.0\"?>\n<owncloudclient><version>latest</version><versionstring>latest</versionstring><downloadurl>http://127.0.0.1:1/payload</downloadurl></owncloudclient>"_ba;
+            QHttpHeaders headers;
+            headers.append(QHttpHeaders::WellKnownHeader::ContentType, "application/xml"_ba);
+            responder.write(xml, headers);
+        });
+
+        QTcpServer tcpServer;
+        QVERIFY(tcpServer.listen(QHostAddress::LocalHost));
+        QVERIFY(httpServer.bind(&tcpServer));
+        const QString baseUrl = "http://%1:%2"_L1.arg(tcpServer.serverAddress().toString(), QString::number(tcpServer.serverPort()));
+
+        AppImageUpdater updater(QUrl("%1/updateinfo.xml"_L1.arg(baseUrl)));
+        updater.checkForUpdate();
+        QTRY_COMPARE(updater.downloadState(), int(OCUpdater::UpToDate));
+
+        qunsetenv("APPIMAGE");
     }
 #endif
 };

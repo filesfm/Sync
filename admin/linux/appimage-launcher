@@ -46,20 +46,6 @@ if [[ ${#@} -ne 0 ]]; then
 	fi
 fi
 
-readonly APPIMAGE_VERSION=$(cat "${USR_DIR}/version")
-readonly NEW_APPIMAGE_VERSION=$(curl "https://webdavdev7.failiem.lv/sync-appimage/version" 2>/dev/null)
-if [[ "${APPIMAGE_VERSION}" == "${NEW_APPIMAGE_VERSION}" ]]; then
-	:
-elif [[ "$(printf "%s\n%s\n" "${APPIMAGE_VERSION}" "${NEW_APPIMAGE_VERSION}" | sort -V | tail -1)" == ${NEW_APPIMAGE_VERSION} ]]; then
-	if zenity --question "Sync Update" --text "A new version is available: ${APPIMAGE_VERSION} -> ${NEW_APPIMAGE_VERSION} Do you want to update the application?"; then
-		NEW_APPIMAGE="$(dirname "${APPIMAGE}")/files_fm_sync-${NEW_APPIMAGE_VERSION}.AppImage"
-		wget "https://webdavdev7.failiem.lv/sync-appimage/download" -O "${NEW_APPIMAGE}"
-		chmod u+x "${NEW_APPIMAGE}"
-		"${NEW_APPIMAGE}" --update "$(pgrep files_fm_sync | tr '\n' ' ')" "${APPIMAGE}"
-		echo "${NEW_APPIMAGE} --update $(pgrep files_fm_sync | tr '\n' ' ') ${APPIMAGE}"
-	fi
-fi
-
 cleanup() {
 	rm ~/.local/share/applications/filesfm.desktop
 	rm ~/.local/share/mime/packages/x-filesfm.xml

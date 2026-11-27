@@ -266,6 +266,8 @@ IF(BUILD_UPDATER)
         updater/updateinfo.cpp
         updater/updater.h
         updater/updater.cpp
+        updater/appimageupdater.h
+        updater/appimageupdater.cpp
     )
 endif()
 

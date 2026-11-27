@@ -206,7 +206,14 @@ void OCUpdater::slotStartInstaller()
     settings.sync();
     qCInfo(lcUpdater) << "Running updater" << updateFile;
 
-    if(updateFile.endsWith(".exe")) {
+    if (updateFile.endsWith(".AppImage", Qt::CaseInsensitive)) {
+        const auto appImagePath = qgetenv("APPIMAGE");
+        if (!appImagePath.isEmpty()) {
+            QProcess::startDetached(updateFile, QStringList{ "--update",
+                QString::number(QCoreApplication::applicationPid()),
+                QString::fromLocal8Bit(appImagePath) });
+        }
+    } else if(updateFile.endsWith(".exe")) {
         QProcess::startDetached(updateFile, QStringList() << "/S"
                                                           << "/launch");
     } else if(updateFile.endsWith(".msi")) {

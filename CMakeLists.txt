@@ -151,6 +151,11 @@ if(APPLE AND BUILD_OWNCLOUD_OSX_BUNDLE)
     add_definitions(-DBUILD_OWNCLOUD_OSX_BUNDLE)
 endif()
 
+option(BUILD_APPIMAGE_UPDATER "Enable the in-app self-updater for AppImage builds" OFF)
+if(BUILD_APPIMAGE_UPDATER)
+    add_definitions(-DBUILD_APPIMAGE_UPDATER)
+endif()
+
 find_package(Qt${QT_MAJOR_VERSION} COMPONENTS Core)
 option(QUICK_COMPILER "Use QtQuick compiler to improve performance" OFF)
 
