@@ -263,6 +263,312 @@ jobs:
           path: dist/*.AppImage
           if-no-files-found: error
 
+  # aarch64 AppImage, cross-compiled on the x86_64 runner.
+  #
+  # Compilation (the expensive part) uses Ubuntu's native x86_64 ->
+  # aarch64 cross toolchain against "<pkg>-dev:arm64" multiarch packages
+  # (admin/linux/aarch64-linux-gnu.cmake). Deployment (linuxdeploy,
+  # linuxdeploy-plugin-qt, appimagetool) has to inspect and run aarch64
+  # binaries (ldd, the target qmake), so it uses the aarch64 builds of
+  # those tools through qemu-user binfmt -- that only copies/patches
+  # files, so the emulation cost stays small.
+  #
+  # Ubuntu 24.04 rather than Rocky 8 (as in the x86_64 job): Rocky 8 has no
+  # userland aarch64 cross toolchain, and Qt's official linux_gcc_arm64
+  # binaries are built on Ubuntu 24.04 and need GLIBC_2.38 anyway, so the
+  # resulting AppImage's glibc baseline is 2.39 instead of 2.28.
+  appimage-aarch64:
+    name: AppImage (aarch64)
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:24.04
+      # Needed to register the qemu-aarch64 binfmt handler (host kernel).
+      options: --privileged
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      QT_VERSION: '6.8.3'
+      # Target (arm64) and host (x86_64, for moc/rcc/qmlcachegen/...) Qt.
+      QT_TARGET_PREFIX: /opt/qt
+      QT_HOST_PREFIX: /opt/qt-host
+      # Read by admin/linux/aarch64-linux-gnu.cmake; KArchive and
+      # qtkeychain are cross-built into it.
+      AARCH64_DEPS_PREFIX: /opt/aarch64
+      TOOLCHAIN_FILE: ${{ github.workspace }}/admin/linux/aarch64-linux-gnu.cmake
+    steps:
+      - name: Install git
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+
+      # The container's default (deb822) sources point at archive.ubuntu.com,
+      # which only carries amd64/i386; arm64 lives on ports.ubuntu.com.
+      - name: Enable arm64 multiarch
+        run: |
+          dpkg --add-architecture arm64
+          sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+          cat > /etc/apt/sources.list.d/ubuntu-ports.sources <<'EOF'
+          Types: deb
+          URIs: http://ports.ubuntu.com/ubuntu-ports/
+          Suites: noble noble-updates noble-security
+          Components: main universe
+          Architectures: arm64
+          Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
+          EOF
+          apt-get update
+
+      # Host side: cross compiler, build tools, qemu, and the x86_64 runtime
+      # libraries the host Qt's tools (qmlcachegen, qsb, lrelease, ...) link
+      # against. Target side: every aarch64 library the project, KArchive,
+      # qtkeychain and Qt (incl. WebEngine) link against, so linuxdeploy can
+      # find and bundle them.
+      - name: Install build dependencies (host and arm64)
+        run: |
+          apt-get install -y --no-install-recommends \
+            curl file findutils patchelf xz-utils python3 python3-venv \
+            g++-aarch64-linux-gnu pkg-config librsvg2-bin qemu-user-static \
+            libglib2.0-0t64 libgl1 libegl1 libopengl0 libxkbcommon0 libfontconfig1 libfreetype6 libdbus-1-3
+          apt-get install -y --no-install-recommends \
+            libc6-dev:arm64 libstdc++6:arm64 libatomic1:arm64 \
+            libssl-dev:arm64 libsqlite3-dev:arm64 libp11-dev:arm64 libsecret-1-dev:arm64 \
+            libglib2.0-dev:arm64 libdbus-1-dev:arm64 libcloudproviders-dev:arm64 \
+            zlib1g-dev:arm64 libbz2-dev:arm64 liblzma-dev:arm64 libzstd-dev:arm64 \
+            libgl-dev:arm64 libegl-dev:arm64 libopengl-dev:arm64 \
+            libxkbcommon-dev:arm64 libxkbcommon-x11-dev:arm64 libx11-dev:arm64 libx11-xcb-dev:arm64 libxcb1-dev:arm64 \
+            libxcb-cursor0:arm64 libxcb-icccm4:arm64 libxcb-image0:arm64 libxcb-keysyms1:arm64 libxcb-randr0:arm64 \
+            libxcb-render-util0:arm64 libxcb-shape0:arm64 libxcb-xinerama0:arm64 libxcb-xkb1:arm64 libxcb-xfixes0:arm64 \
+            libxcb-sync1:arm64 libxcb-shm0:arm64 libxcb-util1:arm64 libxkbfile1:arm64 \
+            libfontconfig1:arm64 libfreetype6:arm64 libnss3:arm64 libasound2t64:arm64 \
+            libdrm2:arm64 libgbm1:arm64 libxcomposite1:arm64 libxdamage1:arm64 libxrandr2:arm64 \
+            libxtst6:arm64 libxshmfence1:arm64
+
+      # Writes straight to the host kernel's binfmt_misc (hence --privileged);
+      # the "F" flag in Ubuntu's qemu-aarch64.conf makes the kernel keep the
+      # interpreter open, so it works from any mount namespace.
+      - name: Register qemu-aarch64 binfmt handler
+        run: |
+          if [ ! -e /proc/sys/fs/binfmt_misc/register ]; then
+            mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+          fi
+          if [ ! -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then
+            cat /usr/lib/binfmt.d/qemu-aarch64.conf > /proc/sys/fs/binfmt_misc/register
+          fi
+          cat /proc/sys/fs/binfmt_misc/qemu-aarch64
+
+      # Ubuntu 24.04's Python is externally managed (PEP 668), so use a venv.
+      - name: Install cmake, ninja and aqtinstall via pip
+        run: |
+          python3 -m venv /opt/venv
+          /opt/venv/bin/pip install cmake ninja aqtinstall
+          echo "/opt/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Install Qt (host x86_64 and target arm64) via aqtinstall
+        run: |
+          aqt install-qt linux desktop "$QT_VERSION" linux_gcc_64 \
+            -m qtshadertools qtwebengine qtwebchannel qtpositioning \
+            -O "$QT_HOST_PREFIX"
+          aqt install-qt linux_arm64 desktop "$QT_VERSION" linux_gcc_arm64 \
+            -m qt5compat qtwebsockets qtshadertools qtwebengine qtwebchannel qtpositioning \
+            -O "$QT_TARGET_PREFIX"
+
+          host_root="$(dirname "$(dirname "$(dirname "$(dirname "$(find "$QT_HOST_PREFIX/$QT_VERSION" -path '*/lib/cmake/Qt6/Qt6Config.cmake' | head -n1)")")")")"
+          target_root="$(dirname "$(dirname "$(dirname "$(dirname "$(find "$QT_TARGET_PREFIX/$QT_VERSION" -path '*/lib/cmake/Qt6/Qt6Config.cmake' | head -n1)")")")")"
+          test -x "$host_root/bin/qmake" && test -x "$target_root/bin/qmake"
+          file -L "$target_root/lib/libQt6Core.so" | grep -q 'ARM aarch64'
+          echo "QT_HOST_ROOT=$host_root" >> "$GITHUB_ENV"
+          echo "QT_ROOT_DIR=$target_root" >> "$GITHUB_ENV"
+
+      # Fails here, early, if binfmt/qemu or the arm64 runtime libs are not
+      # usable -- the deploy steps below depend on running aarch64 binaries.
+      - name: Check that aarch64 binaries run under qemu
+        run: '"$QT_ROOT_DIR/bin/qmake" -query QT_VERSION'
+
+      # linuxdeploy resolves dependencies by running "ldd". The container's
+      # /usr/bin/ldd is amd64 glibc's script, which only tries the x86
+      # loaders and reports aarch64 files as "not a dynamic executable".
+      # Route aarch64 ELF files to the arm64 loader's --list mode (same
+      # output format as ldd, honours LD_LIBRARY_PATH; runs under qemu) and
+      # everything else to the real ldd.
+      - name: Install aarch64-aware ldd wrapper
+        run: |
+          cat > /usr/local/bin/ldd <<'EOF'
+          #!/bin/sh
+          last=""
+          for arg in "$@"; do last="$arg"; done
+          if [ -n "$last" ] && file -L "$last" 2>/dev/null | grep -q 'ARM aarch64'; then
+            exec /lib/ld-linux-aarch64.so.1 --list "$last"
+          fi
+          exec /usr/bin/ldd "$@"
+          EOF
+          chmod +x /usr/local/bin/ldd
+          ldd "$QT_ROOT_DIR/lib/libQt6Core.so.6" | grep -q 'libstdc++'
+
+      # ECM is only CMake modules, so a native build/install serves both.
+      - name: Build and install extra-cmake-modules
+        run: |
+          git clone --depth 1 https://invent.kde.org/frameworks/extra-cmake-modules.git "$RUNNER_TEMP/ecm"
+          cmake -S "$RUNNER_TEMP/ecm" -B "$RUNNER_TEMP/ecm-build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr/local
+          cmake --build "$RUNNER_TEMP/ecm-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/ecm-build"
+
+      - name: Cross-build and install KF6Archive
+        run: |
+          # Same pin as the x86_64 job: newest tag still accepting Qt 6.8.x.
+          git clone --branch v6.24.0 --depth 1 https://invent.kde.org/frameworks/karchive.git "$RUNNER_TEMP/karchive"
+          cmake -S "$RUNNER_TEMP/karchive" -B "$RUNNER_TEMP/karchive-build" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR;/usr/local" \
+            -DQT_HOST_PATH="$QT_HOST_ROOT" \
+            -DCMAKE_INSTALL_PREFIX="$AARCH64_DEPS_PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib
+          cmake --build "$RUNNER_TEMP/karchive-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/karchive-build"
+
+      - name: Cross-build and install qtkeychain
+        run: |
+          git clone --depth 1 https://github.com/frankosterfeld/qtkeychain.git "$RUNNER_TEMP/qtkeychain"
+          cmake -S "$RUNNER_TEMP/qtkeychain" -B "$RUNNER_TEMP/qtkeychain-build" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_WITH_QT6=ON \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR;/usr/local" \
+            -DQT_HOST_PATH="$QT_HOST_ROOT" \
+            -DCMAKE_INSTALL_PREFIX="$AARCH64_DEPS_PREFIX" \
+            -DCMAKE_INSTALL_LIBDIR=lib
+          cmake --build "$RUNNER_TEMP/qtkeychain-build" --parallel "$(nproc)"
+          cmake --install "$RUNNER_TEMP/qtkeychain-build"
+
+      - name: Configure, cross-compile and install
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          cmake -S "$GITHUB_WORKSPACE" -B "$GITHUB_WORKSPACE/build" -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$TOOLCHAIN_FILE" \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR;$AARCH64_DEPS_PREFIX;/usr/local" \
+            -DQT_HOST_PATH="$QT_HOST_ROOT" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_LIBDIR=lib \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_UPDATER=ON \
+            -DBUILD_APPIMAGE_UPDATER=ON \
+            -DAPPLICATION_UPDATE_URL="$UPDATE_URL" \
+            -DMIRALL_VERSION_BUILD="${GITHUB_RUN_NUMBER}" \
+            -DMIRALL_VERSION_SUFFIX=""
+          cmake --build "$GITHUB_WORKSPACE/build" --parallel "$(nproc)"
+          DESTDIR="$RUNNER_TEMP/appimage-root" cmake --install "$GITHUB_WORKSPACE/build"
+          file "$RUNNER_TEMP/appimage-root/usr/local/bin/files_fm_sync" | grep -q 'ARM aarch64'
+
+      - name: Deploy Qt and system dependencies with linuxdeploy (aarch64, via qemu)
+        env:
+          STAGING: ${{ runner.temp }}/appimage-root
+          APPDIR: ${{ runner.temp }}/AppDir
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          mkdir -p "$HOME/.local/linuxdeploy-tools"
+          curl -sSfL -o "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage"
+          curl -sSfL -o "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" \
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-aarch64.AppImage"
+          chmod +x "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage"
+
+          DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
+          ICON_FILE="$STAGING/usr/local/share/icons/hicolor/512x512/apps/files_fm_sync.png"
+
+          # appimagetool's strict desktop-file validation rejects custom
+          # groups not prefixed "X-" (freedesktop desktop-entry spec).
+          sed -i -e 's/\[org.freedesktop.CloudProviders\]/[X-org.freedesktop.CloudProviders]/' \
+                 -e 's/Implements=org.freedesktop.CloudProviders/Implements=X-org.freedesktop.CloudProviders/' \
+                 "$DESKTOP_FILE"
+
+          # The aarch64 loader (run by qemu) searches /usr/lib/aarch64-linux-gnu
+          # by itself; the cross-built deps and Qt are added here.
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$AARCH64_DEPS_PREFIX/lib:$QT_ROOT_DIR/lib" \
+            "$HOME/.local/linuxdeploy-tools/linuxdeploy.AppImage" \
+            --appdir="$APPDIR" \
+            --executable="$STAGING/usr/local/bin/files_fm_sync" \
+            --desktop-file="$DESKTOP_FILE" \
+            --icon-file="$ICON_FILE"
+
+          QMAKE="$QT_ROOT_DIR/bin/qmake" \
+          QML_SOURCES_PATHS="$GITHUB_WORKSPACE/src/gui" \
+          LD_LIBRARY_PATH="$STAGING/usr/local/lib:$AARCH64_DEPS_PREFIX/lib:$QT_ROOT_DIR/lib:$QT_ROOT_DIR/plugins/sqldrivers" \
+            "$HOME/.local/linuxdeploy-tools/linuxdeploy-plugin-qt.AppImage" --appdir="$APPDIR" \
+            --exclude-library="libqsqlmimer.so" \
+            --exclude-library="libqsqlpsql.so" \
+            --exclude-library="libqsqlodbc.so" \
+            --exclude-library="libqsqlmysql.so" \
+            --exclude-library="libqtposition_nmea.so"
+
+      - name: Assemble AppDir
+        env:
+          STAGING: ${{ runner.temp }}/appimage-root
+          APPDIR: ${{ runner.temp }}/AppDir
+          VERSION: ${{ github.ref_name }}
+        run: |
+          chmod +x "$GITHUB_WORKSPACE/admin/linux/appimage-launcher"
+          cp "$GITHUB_WORKSPACE/admin/linux/appimage-launcher" "$APPDIR/usr/bin/launcher"
+          cp "$STAGING/usr/local/bin/files_fm_synccmd" "$APPDIR/usr/bin/files_fm_synccmd"
+          cp "$STAGING/usr/local/bin/files_fm_sync" "$APPDIR/usr/bin/files_fm_sync"
+          # shellcheck disable=SC2016
+          patchelf --set-rpath '$ORIGIN/../lib' "$APPDIR/usr/bin/files_fm_sync"
+          # shellcheck disable=SC2016
+          patchelf --set-rpath '$ORIGIN/../lib' "$APPDIR/usr/bin/files_fm_synccmd"
+
+          ln -f -s usr/bin/launcher "$APPDIR/AppRun"
+          cp "$STAGING/usr/local/share/icons/hicolor/256x256/apps/files_fm_sync.png" "$APPDIR/.DirIcon"
+
+          mkdir -p "$APPDIR/usr/plugins"
+          cp "$(find "$STAGING" -name 'files_fm_syncsync_vfs_suffix.so')" "$APPDIR/usr/plugins/files_fm_syncsync_vfs_suffix.so"
+          cp "$(find "$STAGING" -name 'files_fm_syncsync_vfs_xattr.so')" "$APPDIR/usr/plugins/files_fm_syncsync_vfs_xattr.so"
+
+          mkdir -p "$APPDIR/usr/share/caja-python"
+          mkdir -p "$APPDIR/usr/share/nemo-python"
+          mkdir -p "$APPDIR/usr/share/nautilus-python"
+          cp "$STAGING/usr/local/share/caja-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/caja-python"
+          cp "$STAGING/usr/local/share/nemo-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/nemo-python"
+          cp "$STAGING/usr/local/share/nautilus-python/extensions/syncstate-Files.fm Sync 2027.py" "$APPDIR/usr/share/nautilus-python"
+
+          echo "${VERSION#v}" > "$APPDIR/usr/version"
+
+          DESKTOP_FILE="$(find "$STAGING/usr/local/share/applications" -name '*.desktop' | head -n1)"
+          cp --force "$DESKTOP_FILE" "$APPDIR/$(basename "$DESKTOP_FILE")"
+
+      - name: Package AppImage with appimagetool (aarch64, via qemu)
+        env:
+          APPDIR: ${{ runner.temp }}/AppDir
+          VERSION: ${{ github.ref_name }}
+          ARCH: aarch64
+        run: |
+          curl -sSfL -o "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage" \
+            "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage"
+          chmod +x "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage"
+
+          mkdir -p dist
+          APPIMAGE_EXTRACT_AND_RUN=1 "$HOME/.local/linuxdeploy-tools/appimagetool.AppImage" -n "$APPDIR" \
+            "dist/files_fm_sync-${VERSION#v}-aarch64.AppImage"
+
+          # Guard against x86_64 libraries having been bundled by mistake.
+          if find "$APPDIR/usr" -type f -name '*.so*' -exec file {} + | grep 'x86-64'; then
+            echo "x86_64 libraries found in the aarch64 AppDir" >&2
+            exit 1
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: appimage-aarch64
+          path: dist/*.AppImage
+          if-no-files-found: error
+
   macos:
     name: macOS
     runs-on: macos-latest
@@ -1364,7 +1670,7 @@ jobs:
 
   release:
     name: Publish release
-    needs: [appimage, macos, windows, windows-arm64]
+    needs: [appimage, appimage-aarch64, macos, windows, windows-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Download artifacts
